@@ -1,26 +1,46 @@
+def format_number(value: float, suffix: str = "") -> str:
+    """Универсальная функция форматирования чисел с русскими суффиксами"""
+    if value == 0:
+        return f"0{suffix}"
+
+    # Определяем суффикс и делитель
+    if value >= 1_000_000_000_000:  # триллион
+        divisor = 1_000_000_000_000
+        unit = " трлн"
+    elif value >= 1_000_000_000:  # миллиард
+        divisor = 1_000_000_000
+        unit = " млрд"
+    elif value >= 1_000_000:  # миллион
+        divisor = 1_000_000
+        unit = " млн"
+    elif value >= 1_000:  # тысяча
+        divisor = 1_000
+        unit = " тыс"
+    else:  # меньше 1000
+        # Для маленьких чисел показываем с дробной частью
+        if value < 1:
+            return f"{value:.2f}{suffix}"
+        else:
+            return f"{int(value)}{suffix}"
+
+    formatted = value / divisor
+
+    # Для больших чисел показываем без дробной части
+    if formatted >= 100:
+        return f"{int(formatted)}{unit}{suffix}"
+    else:
+        return f"{formatted:.2f}{unit}{suffix}"
+
+
 def format_price(price: float) -> str:
     """Форматирует цену для отображения"""
-    if price == 0:
-        return "0"
-    elif price >= 1000000000:  # 1B+
-        return f"{price / 1000000000:.3f}B"
-    elif price >= 1000000:  # 1M+
-        return f"{price / 1000000:.3f}M"
-    elif price >= 1000:  # 1K+
-        return f"{price / 1000:.3f}K"
-    else:
-        return f"{int(price)}"
+    return format_number(price)
+
 
 def format_income(income_per_second: float) -> str:
     """Форматирует доход для отображения"""
-    if income_per_second >= 1000000000:  # 1B+
-        return f"{income_per_second/1000000000:.3f}B/сек"
-    elif income_per_second >= 1000000:   # 1M+
-        return f"{income_per_second/1000000:.3f}M/сек"
-    elif income_per_second >= 1000:      # 1K+
-        return f"{income_per_second/1000:.3f}K/сек"
-    else:                             # любое число
-        return f"{income_per_second:.1f}/сек"
+    return format_number(income_per_second, "/сек")
+
 
 def get_coin_display_name(coin_type: str) -> str:
     """Возвращает читаемое имя для типа монеты"""
