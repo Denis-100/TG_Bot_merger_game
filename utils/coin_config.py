@@ -70,13 +70,13 @@ EXCHANGE_RATES = {
 # Отображаемые имена для монет
 COIN_DISPLAY_NAMES = {
     'bronze_coin': "🟤 Медная монета",
-    'bronze_bar': "🟤 Медный слиток",
+    'bronze_bar': "🟫 Медный слиток",
     'iron_coin': "⚙️ Железная монета",
     'iron_bar': "⚙️ Железный слиток",
     'silver_coin': "⚪ Серебряная монета",
     'silver_bar': "⚪ Серебряный слиток",
-    'bronze_coin_high': "🟫 Бронзовая монета",
-    'bronze_bar_high': "🟫 Бронзовый слиток",
+    'bronze_coin_high': "🟠 Бронзовая монета",
+    'bronze_bar_high': "🟧 Бронзовый слиток",
     'gold_coin': "🟡 Золотая монета",
     'gold_bar': "🟡 Золотой слиток",
     'emerald': "💚 Изумруд",
