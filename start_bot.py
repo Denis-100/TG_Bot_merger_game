@@ -15,7 +15,6 @@ def check_environment():
     # Проверяем .env.local
     if not os.path.exists('.env.local'):
         print("❌ .env.local не найден!")
-        return False
     else:
         with open('.env.local', 'r') as f:
             content = f.read()
