@@ -15,9 +15,9 @@ async def migrate_if_needed():
     print("🔍 Проверка необходимости миграции...")
 
     # Проверяем, что мы в продакшене с PostgreSQL
-    if os.getenv("ENVIRONMENT") != "production":
-        print("ℹ️  Не продакшн, миграция не требуется")
-        return False
+    # if os.getenv("ENVIRONMENT") != "production":
+    #     print("ℹ️  Не продакшн, миграция не требуется")
+    #     return False
 
     # Проверяем существование SQLite файла
     sqlite_db = "users.db"
