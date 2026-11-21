@@ -37,7 +37,7 @@ def get_buy_coins_keyboard(user_data: dict) -> InlineKeyboardMarkup:
 
         # Первая строка: 1 монета
         price_1 = calculate_bronze_coin_price(user_data, 1)
-        button_text_1 = "1 шт" + (f" - {format_price(price_1)}" if price_1 > 0 else " - БЕСПЛАТНО")
+        button_text_1 = "1 🟤" + (f" - {format_price(price_1)}" if price_1 > 0 else " - БЕСПЛАТНО")
         builder.row(InlineKeyboardButton(text=button_text_1, callback_data="buy_bronze_1"))
 
         # Вторая строка: 100, 500
