@@ -5,7 +5,7 @@ def get_profile_text(user_data: dict, next_price: str, coins_list: list) -> str:
         f"👤 Профиль: {user_data['username']}\n"
         f"💰 Баланс: {format_price(user_data['money'])}\n"
         f"📈 Общий доход: {format_price(user_data['online_income'])} в секунду\n"
-        f"💵 Куплено медных монет: {user_data.get('bronze_coin_bought', 0)}\n"
+        f"💵 Куплено медных монет: {user_data.get('bronze_coin_bought', 0):,}\n"
     )
 
     if coins_list:

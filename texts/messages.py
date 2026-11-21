@@ -51,7 +51,7 @@ def get_buy_failed_text(balance: str, required: str, missing: str) -> str:
 def get_buy_menu_text(balance: str, bronze_bought: int, next_price: str, income: str) -> str:
     return (
         f"💰 Ваш баланс: {balance}\n"
-        f"🟤 Куплено медных монет: {bronze_bought}\n"
+        f"🟤 Куплено медных монет: {bronze_bought:,}\n"
         f"🎯 Следующая монета: {next_price}\n"
         f"📈 Текущий доход: {income} в секунду\n"
         f"\nВыберите количество медных монет для покупки:"
@@ -202,10 +202,10 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0,
         if sort_by == "money":
             # Если сортируем по деньгам - показываем баланс первым
             text += f"   Баланс: {format_price(money)}\n"
-            text += f"   Куплено медных: {bronze_bought}\n"
+            text += f"   Куплено медных: {bronze_bought:,}\n"
         else:
             # Если сортируем по монетам - показываем монеты первым
-            text += f"   Куплено медных: {bronze_bought}\n"
+            text += f"   Куплено медных: {bronze_bought:,}\n"
             text += f"   Баланс: {format_price(money)}\n"
 
         if top_asset_count > 0:
@@ -228,9 +228,9 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0,
 
         if sort_by == "money":
             text += f"💰 Баланс: {format_price(user_data.get('money', 0))}\n"
-            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0)}\n"
+            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0):,}\n"
         else:
-            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0)}\n"
+            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0):,}\n"
             text += f"💰 Баланс: {format_price(user_data.get('money', 0))}\n"
 
         top_asset_name, top_asset_count = get_user_top_asset(user_data)
@@ -256,7 +256,7 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0,
                 bronze_above = user_above[1].get('bronze_coin_bought', 0)
                 need_more_bronze = bronze_above - user_data.get('bronze_coin_bought', 0) + 1
                 if need_more_bronze > 0:
-                    text += f"\n📈 До {user_position - 1} места: +{need_more_bronze} медных монет"
+                    text += f"\n📈 До {user_position - 1} места: +{need_more_bronze:,} медных монет"
 
     text += f"\n📊 Всего игроков: {len(sorted_users)}"
     return text

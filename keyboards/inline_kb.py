@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from utils.calculations import calculate_bronze_coin_price, should_show_advanced_buttons
+from utils.calculations import calculate_bronze_coin_price, should_show_advanced_buttons, should_show_super_advanced_buttons
 from utils.formatters import format_price
 
 
@@ -27,18 +27,20 @@ def get_buy_coins_keyboard(user_data: dict, message_id: int = None) -> InlineKey
 
     bronze_bought = user_data.get('bronze_coin_bought', 0)
     show_advanced = should_show_advanced_buttons(user_data)
+    show_super_advanced = should_show_super_advanced_buttons(user_data)
 
     # Всегда показываем кнопку покупки 3 монет
-    total_price_3 = calculate_bronze_coin_price(user_data, 3)
-    button_text_3 = f"Купить 3 медные монеты"
-    if total_price_3 > 0:
-        button_text_3 += f" - {format_price(total_price_3)}"
-    else:
-        button_text_3 += " - БЕСПЛАТНО"
+    if not show_super_advanced:
+        total_price_3 = calculate_bronze_coin_price(user_data, 3)
+        button_text_3 = f"Купить 3 медные монеты"
+        if total_price_3 > 0:
+            button_text_3 += f" - {format_price(total_price_3)}"
+        else:
+            button_text_3 += " - БЕСПЛАТНО"
 
-    builder.row(InlineKeyboardButton(text=button_text_3, callback_data="buy_bronze_3"))
+        builder.row(InlineKeyboardButton(text=button_text_3, callback_data="buy_bronze_3"))
 
-    if show_advanced:
+    if show_advanced and not show_super_advanced:
         # Продвинутые кнопки для богатых игроков
         advanced_quantities = [1, 100, 500, 2500, 10000]
 
@@ -67,6 +69,31 @@ def get_buy_coins_keyboard(user_data: dict, message_id: int = None) -> InlineKey
             )
         builder.row(*row_buttons_2500_10000)
 
+    elif show_super_advanced:
+        # Первая строка: 100, 500
+        row_buttons_100_500 = []
+        for qty in [100, 500]:
+            total_price = calculate_bronze_coin_price(user_data, qty)
+            button_text = f"{qty} шт - {format_price(total_price)}"
+            row_buttons_100_500.append(
+                InlineKeyboardButton(text=button_text, callback_data=f"buy_bronze_{qty}")
+            )
+        builder.row(*row_buttons_100_500)
+
+        # Вторая строка: 2500, 10000
+        row_buttons_2500_10000 = []
+        for qty in [2500, 10000]:
+            total_price = calculate_bronze_coin_price(user_data, qty)
+            button_text = f"{qty} шт - {format_price(total_price)}"
+            row_buttons_2500_10000.append(
+                InlineKeyboardButton(text=button_text, callback_data=f"buy_bronze_{qty}")
+            )
+        builder.row(*row_buttons_2500_10000)
+
+        # Третья строка: 100 000
+        total_price = calculate_bronze_coin_price(user_data, 100000)
+        button_text = f"100 000 шт - {format_price(total_price)}"
+        builder.row(InlineKeyboardButton(text=button_text, callback_data=f"buy_bronze_{100000}"))
     else:
         # Стандартные кнопки для новых игроков
         if bronze_bought < 5:
@@ -153,8 +180,8 @@ def get_leaderboard_text(sorted_users, user_position, current_user_data,
     text += f"\n📊 ВАША ПОЗИЦИЯ: #{user_position}\n"
 
     if rating_type == "coins":
-        user_value = current_user_data.get('bronze_coin_bought', 0)
-        text += f"🟤 Куплено медных монет: {user_value:,}\n"
+        user_value = (current_user_data.get('bronze_coin_bought', 0))
+        text += f"🟤 Куплено медных монет: {user_value}\n"
 
         # Прогресс до следующей позиции
         if user_position > 1 and len(sorted_users) > 1:

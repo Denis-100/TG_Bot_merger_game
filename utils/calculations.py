@@ -47,3 +47,7 @@ def get_price_breakdown(user: dict, quantity: int) -> list:
 def should_show_advanced_buttons(user: dict) -> bool:
     """Определяет, нужно ли показывать продвинутые кнопки покупки"""
     return user.get('money', 0) >= 100_000_000  # 100 миллионов
+
+def should_show_super_advanced_buttons(user: dict) -> bool:
+    """Определяет, нужно ли показывать продвинутые кнопки покупки"""
+    return user.get('money', 0) >= 1_000_000_000_000  # 1 Трл
