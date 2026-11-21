@@ -16,9 +16,16 @@ def check_environment():
     if not os.path.exists('.env.local'):
         print("❌ .env.local не найден!")
         return False
-
-    with open('.env.local', 'r') as f:
+    else:
+        with open('.env.local', 'r') as f:
         content = f.read()
+        
+    if not os.path.exists('.env'):
+        print("❌ .env не найден!")
+        return False
+    else:
+        with open('.env', 'r') as f:
+            content = f.read()
 
     if 'BOT_TOKEN=' not in content:
         print("❌ BOT_TOKEN не найден в .env.local")
