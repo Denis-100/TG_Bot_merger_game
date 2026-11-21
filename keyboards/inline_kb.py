@@ -90,10 +90,10 @@ def get_buy_coins_keyboard(user_data: dict, message_id: int = None) -> InlineKey
             )
         builder.row(*row_buttons_2500_10000)
 
-        # # Третья строка: 100 000
-        # total_price = calculate_bronze_coin_price(user_data, 100000)
-        # button_text = f"100 000 шт - {format_price(total_price)}"
-        # builder.row(InlineKeyboardButton(text=button_text, callback_data=f"buy_bronze_{100000}"))
+        # Третья строка: 100 000
+        total_price = calculate_bronze_coin_price(user_data, 100000)
+        button_text = f"100 000 шт - {format_price(total_price)}"
+        builder.row(InlineKeyboardButton(text=button_text, callback_data=f"buy_bronze_{100000}"))
     else:
         # Стандартные кнопки для новых игроков
         if bronze_bought < 5:
