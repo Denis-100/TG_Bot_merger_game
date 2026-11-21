@@ -1,5 +1,4 @@
-# utils/calculations.py
-from .income_config import get_income
+from utils.coin_config import get_income
 
 
 def calculate_coin_income(coin_type: str, count: int) -> float:
@@ -57,3 +56,8 @@ def get_next_prices_preview(user: dict, count: int = 10) -> list:
         preview.append((bronze_bought + i + 1, price))
 
     return preview
+
+
+def should_show_advanced_buttons(user: dict) -> bool:
+    """Определяет, нужно ли показывать продвинутые кнопки покупки"""
+    return user.get('money', 0) >= 100_000_000  # 100 миллионов

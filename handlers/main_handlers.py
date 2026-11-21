@@ -1,27 +1,30 @@
+# handlers/main_handlers.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
-from database.async_db import (
-    get_user_data, save_user_data, update_user_first_name,
-    get_sorted_users, income_loop
-)
+from database import db
 from keyboards.reply_kb import get_main_menu, get_help_menu
-from keyboards.inline_kb import (
-    get_first_coin_keyboard, get_buy_coins_keyboard,
-    get_leaderboard_keyboard
-)
+from keyboards.inline_kb import get_first_coin_keyboard, get_buy_coins_keyboard, get_leaderboard_keyboard
 from texts.messages import *
 from texts.help_texts import *
 from texts.profile_texts import get_profile_text
 from utils.calculations import (
     calculate_bronze_coin_price, calculate_coin_income,
-    calculate_online_income, get_price_breakdown,
-    get_next_prices_preview
+    calculate_online_income, get_price_breakdown, get_next_prices_preview
 )
 from utils.formatters import format_price, get_coin_display_name
+from utils.coin_config import get_all_coin_types, get_coin_display_name as get_coin_name
 from utils.exchange_logic import auto_exchange_all
+from database.user_data import get_user_top_asset
 
 router = Router()
+
+
+def ensure_user_income(user: dict) -> dict:
+    """Гарантирует наличие online_income в данных пользователя"""
+    if 'online_income' not in user:
+        user['online_income'] = calculate_online_income(user)
+    return user
 
 
 # ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
@@ -29,29 +32,38 @@ router = Router()
 async def start_menu(message: Message):
     """Обработчик команды /start"""
     user_id = message.from_user.id
-    username = message.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = message.from_user.username or message.from_user.first_name or "Пользователь"
 
-    if user['coins']['bronze_coin'] == 0 and user['bronze_coin_bought'] == 0:
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
+
+    # Проверяем, есть ли у пользователя первая монета
+    if user['coins'].get('bronze_coin', 0) == 0 and user['bronze_coin_bought'] == 0:
         await message.answer(
-            get_welcome_text(message.from_user.username or "Пользователь"),
+            get_welcome_text(username),
             reply_markup=get_first_coin_keyboard()
         )
     else:
         await message.answer("Меню", reply_markup=get_main_menu())
-        await message.answer(f"С возвращением, {message.from_user.username or 'Пользователь'}!")
+        await message.answer(f"С возвращением, {username}!")
 
 
 @router.callback_query(F.data == "first_free_coin")
 async def get_first_free_coin(callback: CallbackQuery):
     """Обработчик получения первой бесплатной монеты"""
     user_id = callback.from_user.id
-    username = callback.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
 
-    user['coins']['bronze_coin'] += 1
-    user['bronze_coin_bought'] = 1
-    await save_user_data(user_id, user)
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
+
+    # Добавляем первую медную монету
+    coins = user['coins'].copy()
+    coins['bronze_coin'] = coins.get('bronze_coin', 0) + 1
+
+    # Обновляем данные
+    await db.update_user_coins(user_id, coins)
+    await db.update_bronze_bought(user_id, 1)
 
     await callback.message.answer(get_first_coin_text(), reply_markup=get_main_menu())
     await callback.answer()
@@ -61,15 +73,19 @@ async def get_first_free_coin(callback: CallbackQuery):
 async def profile(message: Message):
     """Обработчик кнопки Профиль"""
     user_id = message.from_user.id
-    username = message.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = message.from_user.username or message.from_user.first_name or "Пользователь"
+
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
+    user = ensure_user_income(user)
 
     next_price = calculate_bronze_coin_price(user, 1)
 
     coins_list = []
-    for coin_type, count in user['coins'].items():
+    for coin_type in get_all_coin_types():
+        count = user['coins'].get(coin_type, 0)
         if count > 0:
-            display_name = get_coin_display_name(coin_type)
+            display_name = get_coin_name(coin_type)
             income_per_sec = calculate_coin_income(coin_type, count)
             coins_list.append(f"  {display_name}: {count} (+{format_price(income_per_sec)}/сек)")
 
@@ -117,8 +133,11 @@ async def back_to_main_menu(message: Message):
 async def buy_coin_menu(message: Message):
     """Обработчик кнопки Купить медные монеты"""
     user_id = message.from_user.id
-    username = message.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = message.from_user.username or message.from_user.first_name or "Пользователь"
+
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
+    user = ensure_user_income(user)
 
     if user['bronze_coin_bought'] == 0:
         await message.answer(get_no_coins_text(), reply_markup=get_first_coin_keyboard())
@@ -131,7 +150,7 @@ async def buy_coin_menu(message: Message):
             format_price(user['money']),
             user['bronze_coin_bought'],
             format_price(next_price),
-            format_price(user['online_income'])
+            format_price(user['online_income'])  # Используем уже рассчитанный доход
         ),
         reply_markup=get_buy_coins_keyboard(user)
     )
@@ -141,57 +160,79 @@ async def buy_coin_menu(message: Message):
 async def buy_bronze_coins(callback: CallbackQuery):
     """Обработчик покупки медных монет"""
     user_id = callback.from_user.id
-    username = callback.from_user.username or "Пользователь"
-    count = int(callback.data.split("_")[-1])
+    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
 
-    user = await get_user_data(user_id, username)
-    total_price = calculate_bronze_coin_price(user, count)
+    try:
+        # Парсим количество монет из callback_data
+        data_parts = callback.data.split("_")
+        count = int(data_parts[-1]) if len(data_parts) > 2 else 1
 
-    if user['money'] >= total_price or total_price == 0:
-        prices = get_price_breakdown(user, count)
+        # Получаем пользователя
+        user = await db.get_or_create_user(user_id, username)
+        user = ensure_user_income(user)
 
-        if total_price > 0:
-            user['money'] -= total_price
+        # Рассчитываем стоимость
+        total_price = calculate_bronze_coin_price(user, count)
 
-        user['coins']['bronze_coin'] += count
-        user['bronze_coin_bought'] += count
+        # Проверяем баланс
+        if user['money'] >= total_price or total_price == 0:
+            prices = get_price_breakdown(user, count)
 
-        await save_user_data(user_id, user)
+            if total_price > 0:
+                # Вычитаем стоимость
+                new_balance = user['money'] - total_price
+                await db.update_user_money(user_id, new_balance)
 
-        price_details = ""
-        if count <= 5:
-            price_details = "\n📋 Цены поштучно:\n"
-            for i, price in enumerate(prices, 1):
-                price_text = "БЕСПЛАТНО" if price == 0 else format_price(price)
-                price_details += f"  {i}. {price_text}\n"
+            # Добавляем монеты
+            coins = user['coins'].copy()
+            coins['bronze_coin'] = coins.get('bronze_coin', 0) + count
 
-        await callback.message.answer(
-            get_buy_success_text(
-                count,
-                format_price(total_price),
-                format_price(user['money']),
-                format_price(user['online_income']),
-                price_details
+            # Обновляем монеты и количество купленных
+            await db.update_user_coins(user_id, coins)
+            await db.update_bronze_bought(user_id, user['bronze_coin_bought'] + count)
+
+            # Получаем обновленные данные для расчета дохода
+            updated_user = await db.get_or_create_user(user_id, username)
+            updated_user = ensure_user_income(updated_user)
+
+            price_details = ""
+            if count <= 5:
+                price_details = "\n📋 Цены поштучно:\n"
+                for i, price in enumerate(prices, 1):
+                    price_text = "БЕСПЛАТНО" if price == 0 else format_price(price)
+                    price_details += f"  {i}. {price_text}\n"
+
+            await callback.message.answer(
+                get_buy_success_text(
+                    count,
+                    format_price(total_price),
+                    format_price(updated_user['money']),
+                    format_price(updated_user['online_income']),
+                    price_details
+                )
             )
-        )
-    else:
-        await callback.message.answer(
-            get_buy_failed_text(
-                format_price(user['money']),
-                format_price(total_price),
-                format_price(total_price - user['money'])
+        else:
+            await callback.message.answer(
+                get_buy_failed_text(
+                    format_price(user['money']),
+                    format_price(total_price),
+                    format_price(total_price - user['money'])
+                )
             )
-        )
 
-    await callback.answer()
+        await callback.answer()
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
 @router.callback_query(F.data == "price_details")
 async def show_price_details(callback: CallbackQuery):
     """Обработчик показа деталей цен"""
     user_id = callback.from_user.id
-    username = callback.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
+
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
 
     preview = get_next_prices_preview(user, 10)
 
@@ -211,20 +252,28 @@ async def back_to_menu(callback: CallbackQuery):
 async def exchange_coins(message: Message):
     """Обработчик кнопки Обменять монеты"""
     user_id = message.from_user.id
-    username = message.from_user.username or "Пользователь"
-    user = await get_user_data(user_id, username)
+    username = message.from_user.username or message.from_user.first_name or "Пользователь"
+
+    # Получаем пользователя
+    user = await db.get_or_create_user(user_id, username)
+    user = ensure_user_income(user)
 
     old_income_per_second = calculate_online_income(user)
 
+    # Выполняем автоматический обмен
     new_user, exchanges, income_change_per_second = await auto_exchange_all(user)
 
     if not exchanges:
         await message.answer(get_no_exchange_text(user['coins']))
         return
 
-    await save_user_data(user_id, new_user)
+    # Сохраняем обновленные данные
+    await db.update_user_coins(user_id, new_user['coins'])
 
-    new_income_per_second = calculate_online_income(new_user)
+    # Получаем обновленные данные для расчета нового дохода
+    updated_user = await db.get_or_create_user(user_id, username)
+    updated_user = ensure_user_income(updated_user)
+    new_income_per_second = calculate_online_income(updated_user)
 
     total_source_used = sum(exchange['source_count'] for exchange in exchanges)
     total_target_gained = sum(exchange['target_count'] for exchange in exchanges)
@@ -249,66 +298,130 @@ async def exchange_coins(message: Message):
 @router.message(F.text == "🏆 Таблица игроков")
 async def show_leaderboard_command(message: Message):
     """Обработчик показа таблицы лидеров"""
-    sorted_users = await get_sorted_users()
+    try:
+        # Получаем всех пользователей (уже отсортированных по убыванию баланса)
+        sorted_users_data = await db.get_all_users()
 
-    if not sorted_users:
-        await message.answer(get_no_users_text())
-        return
+        if not sorted_users_data:
+            await message.answer(get_no_users_text())
+            return
 
-    user_id = str(message.from_user.id)
-    user_position = 0
-    current_user_data = None
+        # Преобразуем данные в формат для функции get_leaderboard_text
+        sorted_users = []
+        for user_data in sorted_users_data:
+            # Добавляем online_income если нужно
+            user_data = ensure_user_income(user_data)
+            # Преобразуем user_id в строку для совместимости
+            sorted_users.append((str(user_data['user_id']), user_data))
 
-    for i, (uid, user_data) in enumerate(sorted_users, 1):
-        if uid == user_id:
-            user_position = i
-            current_user_data = user_data
-            break
+        user_id = message.from_user.id
+        user_id_str = str(user_id)
+        user_position = 0
+        current_user_data = None
 
-    await message.answer(
-        get_leaderboard_text(sorted_users, user_position, current_user_data),
-        reply_markup=get_leaderboard_keyboard()
-    )
+        # Находим позицию текущего пользователя
+        for i, (uid, user_data) in enumerate(sorted_users, 1):
+            if uid == user_id_str:
+                user_position = i
+                current_user_data = user_data
+                break
+
+        # Если пользователя нет в списке, получаем его данные
+        if not current_user_data:
+            username = message.from_user.username or message.from_user.first_name or "Пользователь"
+            current_user_data = await db.get_or_create_user(user_id, username)
+            current_user_data = ensure_user_income(current_user_data)
+
+            # Ищем позицию среди всех пользователей
+            for i, (_, user_data) in enumerate(sorted_users, 1):
+                if user_data['money'] < current_user_data['money']:
+                    user_position = i
+                    break
+            else:
+                user_position = len(sorted_users) + 1
+
+        await message.answer(
+            get_leaderboard_text(sorted_users, user_position, current_user_data),
+            reply_markup=get_leaderboard_keyboard()
+        )
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при загрузке таблицы лидеров: {str(e)}")
 
 
 @router.callback_query(F.data == "refresh_leaderboard")
 async def refresh_leaderboard(callback: CallbackQuery):
     """Обработчик обновления таблицы лидеров"""
-    await callback.message.delete()
+    try:
+        # Удаляем старое сообщение
+        await callback.message.delete()
 
-    # Повторяем логику показа таблицы лидеров
-    sorted_users = await get_sorted_users()
+        # Получаем всех пользователей
+        sorted_users_data = await db.get_all_users()
 
-    if not sorted_users:
-        await callback.message.answer(get_no_users_text())
-        return
+        if not sorted_users_data:
+            await callback.message.answer(get_no_users_text())
+            return
 
-    user_id = str(callback.from_user.id)
-    user_position = 0
-    current_user_data = None
+        # Преобразуем данные в формат для функции get_leaderboard_text
+        sorted_users = []
+        for user_data in sorted_users_data:
+            user_data = ensure_user_income(user_data)
+            sorted_users.append((str(user_data['user_id']), user_data))
 
-    for i, (uid, user_data) in enumerate(sorted_users, 1):
-        if uid == user_id:
-            user_position = i
-            current_user_data = user_data
-            break
+        user_id = callback.from_user.id
+        user_id_str = str(user_id)
+        user_position = 0
+        current_user_data = None
 
-    await callback.message.answer(
-        get_leaderboard_text(sorted_users, user_position, current_user_data),
-        reply_markup=get_leaderboard_keyboard()
-    )
+        # Находим позицию текущего пользователя
+        for i, (uid, user_data) in enumerate(sorted_users, 1):
+            if uid == user_id_str:
+                user_position = i
+                current_user_data = user_data
+                break
 
-    await callback.answer()
+        # Если пользователя нет в списке, получаем его данные
+        if not current_user_data:
+            username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
+            current_user_data = await db.get_or_create_user(user_id, username)
+            current_user_data = ensure_user_income(current_user_data)
+
+            # Ищем позицию среди всех пользователей
+            for i, (_, user_data) in enumerate(sorted_users, 1):
+                if user_data['money'] < current_user_data['money']:
+                    user_position = i
+                    break
+            else:
+                user_position = len(sorted_users) + 1
+
+        await callback.message.answer(
+            get_leaderboard_text(sorted_users, user_position, current_user_data),
+            reply_markup=get_leaderboard_keyboard()
+        )
+
+        await callback.answer()
+    except Exception as e:
+        await callback.message.answer(f"❌ Ошибка при обновлении таблицы лидеров: {str(e)}")
+        await callback.answer()
 
 
+# ========== ОБРАБОТКА ВСЕХ ОСТАЛЬНЫХ СООБЩЕНИЙ ==========
 @router.message()
 async def handle_all_messages(message: Message):
     """Обработчик всех остальных сообщений"""
     user_id = message.from_user.id
     first_name = message.from_user.first_name
+    username = message.from_user.username or first_name or "Пользователь"
 
+    # Обновляем имя пользователя, если оно изменилось
     if first_name:
-        await update_user_first_name(user_id, first_name)
+        # Сначала получаем текущие данные
+        user = await db.get_or_create_user(user_id, username)
+
+        # Проверяем, изменилось ли имя
+        if user['first_name'] != first_name:
+            # Обновляем имя пользователя
+            await db.update_user(user_id, {'first_name': first_name})
 
     # Список команд, которые мы обрабатываем
     processed_commands = [
@@ -320,3 +433,6 @@ async def handle_all_messages(message: Message):
     if message.text not in processed_commands:
         if not message.text.startswith('/'):
             await message.answer(get_default_message_text())
+
+
+print("✅ handlers/main_handlers.py загружен успешно")

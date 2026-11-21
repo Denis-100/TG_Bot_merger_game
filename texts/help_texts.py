@@ -1,6 +1,5 @@
-# texts/help_texts.py
-from utils.income_config import INCOME_PER_SECOND, EXCHANGE_RATES
-from utils.formatters import get_coin_display_name, format_price
+from utils.coin_config import INCOME_PER_SECOND, EXCHANGE_RATES, COIN_DISPLAY_NAMES
+from utils.formatters import format_price
 
 
 def get_help_main_text() -> str:
@@ -51,7 +50,10 @@ def get_tips_text() -> str:
         "📈 Стратегия:\n"
         "• Сначала накопите 3 медные монеты и обменяйте в медный слиток\n"
         "• Повторяйте до получения железных, серебряных и т.д. монет\n"
-        "• Каждый уровень монет приносит больше дохода!"
+        "• Каждый уровень монет приносит больше дохода!\n\n"
+        "🔥 Новая функция:\n"
+        "• При достижении 100M+ баланса открываются новые кнопки покупки!\n"
+        "• Можно покупать сразу 100, 500, 2500 или 10000 медных монет!"
     )
 
 
@@ -69,20 +71,21 @@ def get_assets_info_text() -> str:
         "🟡 Золотые": ['gold_coin', 'gold_bar'],
         "💎 Драгоценные камни": ['emerald', 'sapphire', 'ruby'],
         "⚜️ Платиновые": ['platinum_coin', 'platinum_bar'],
-        "💎 Алмаз": ['diamond']
+        "💎 Алмаз": ['diamond'],
+        "🔥 Новые": ['lava_coin']
     }
 
     for category_name, coin_types in categories.items():
         text += f"{category_name}:\n"
         for coin_type in coin_types:
-            display_name = get_coin_display_name(coin_type)
+            display_name = COIN_DISPLAY_NAMES.get(coin_type, coin_type)
             income = INCOME_PER_SECOND.get(coin_type, 0)
             exchange_rate = EXCHANGE_RATES.get(coin_type, 0)
 
             if exchange_rate > 0:
                 text += f"• {display_name}: {format_price(income)}/сек (нужно {exchange_rate} для обмена)\n"
             else:
-                text += f"• {display_name}: {format_price(income)}/сек\n"
+                text += f"• {display_name}: {format_price(income)}/сек (максимальный уровень)\n"
         text += "\n"
 
     text += "📊 Обмен: 3 монеты = 1 монета следующего уровня"
