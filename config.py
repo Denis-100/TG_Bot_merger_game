@@ -2,6 +2,8 @@
 import os
 import sys
 
+ADMINS = [1029698029]
+
 def get_env_var(name, default=None):
     """Безопасное получение переменной окружения"""
     value = os.getenv(name)

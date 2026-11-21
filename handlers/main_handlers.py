@@ -1,7 +1,9 @@
 # handlers/main_handlers.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from database import db
 from keyboards.reply_kb import get_main_keyboard, get_help_menu
 from keyboards.inline_kb import get_first_coin_keyboard, get_buy_coins_keyboard, get_leaderboard_keyboard
@@ -458,11 +460,575 @@ async def refresh_leaderboard(callback: CallbackQuery):
         await callback.answer()
 
 
+@router.message(Command("top_money"))
+@router.message(F.text == "💰 Топ по деньгам")
+async def show_money_top(message: Message):
+    """Показывает топ по деньгам"""
+    await show_leaderboard_command(message, rating_type="money")
+
+@router.message(Command("top_coins"))
+@router.message(F.text == "🪙 Топ по монетам")
+async def show_coins_top(message: Message):
+    """Показывает топ по купленным монетам"""
+    await show_leaderboard_command(message, rating_type="coins")
+
+class Admin:
+    # ========== АДМИН ПАНЕЛЬ ==========
+
+    # Временное хранилище
+    admin_temp_data = {}
+    broadcast_messages = {}
+
+    @staticmethod
+    @router.message(Command("admin"))
+    async def admin_command(message: Message):
+        """Доступ к админ-панели"""
+        user_id = message.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                return
+        except ImportError:
+            return
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 Список игроков", callback_data="admin_players_1"),
+            InlineKeyboardButton(text="🔍 Поиск игрока", callback_data="admin_search")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📢 Отправить всем", callback_data="admin_broadcast_start"),
+            InlineKeyboardButton(text="🚪 Закрыть", callback_data="admin_close")
+        )
+
+        await message.answer(
+            "⚙️ АДМИН-ПАНЕЛЬ\n\nВыберите действие:",
+            reply_markup=builder.as_markup()
+        )
+
+    @staticmethod
+    @router.callback_query(lambda c: c.data.startswith("admin_players_"))
+    async def admin_show_players(callback: CallbackQuery):
+        """Показать список игроков с пагинацией"""
+        user_id = callback.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                await callback.answer("Нет доступа")
+                return
+        except:
+            await callback.answer("Ошибка доступа")
+            return
+
+        try:
+            # Получаем номер страницы
+            page = int(callback.data.split("_")[2])
+            users = await db.get_all_users()
+
+            if not users:
+                await callback.message.edit_text("📭 Нет зарегистрированных игроков")
+                await callback.answer()
+                return
+
+            # Сортируем по деньгам
+            sorted_users = sorted(users, key=lambda x: x.get('money', 0), reverse=True)
+            total_players = len(users)
+            total_money = sum(u.get('money', 0) for u in users)
+            total_bronze = sum(u.get('bronze_coin_bought', 0) for u in users)
+
+            # Настройки пагинации
+            per_page = 10
+            total_pages = (total_players + per_page - 1) // per_page
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+
+            # Формируем текст
+            text = f"📊 СТРАНИЦА {page}/{total_pages}\n"
+            text += f"👥 Всего игроков: {total_players}\n"
+            text += f"💰 Общая сумма: {format_price(total_money)}\n"
+            text += f"🪙 Всего медных: {total_bronze:,}\n\n"
+            text += "ИГРОКИ:\n"
+
+            for i, user in enumerate(sorted_users[start_idx:end_idx], start_idx + 1):
+                user_id = user.get('user_id')
+                username = user.get('username', '')
+                first_name = user.get('first_name', '')
+                money = user.get('money', 0)
+                bronze = user.get('bronze_coin_bought', 0)
+
+                # Имя для отображения
+                if username:
+                    display_name = f"@{username}"
+                elif first_name:
+                    display_name = first_name
+                else:
+                    display_name = f"ID:{user_id}"
+
+                # Лучший актив
+                coins = user.get('coins', {})
+                best_coin = "Нет"
+                best_count = 0
+
+                if coins:
+                    for coin_type, count in coins.items():
+                        if count > best_count:
+                            best_count = count
+                            try:
+                                from utils.coin_config import COIN_DISPLAY_NAMES
+                                best_coin = COIN_DISPLAY_NAMES.get(coin_type, coin_type)
+                            except:
+                                best_coin = coin_type
+
+                text += f"\n{i}. {display_name}\n"
+                text += f"   ID: {user_id}\n"
+                text += f"   Баланс: {format_price(money)}\n"
+                text += f"   Медных: {bronze:,}\n"
+                text += f"   Лучший актив: {best_coin} ({best_count})"
+
+            # Создаем клавиатуру с пагинацией
+            builder = InlineKeyboardBuilder()
+
+            # Кнопки пагинации
+            pagination_buttons = []
+            if page > 1:
+                pagination_buttons.append(
+                    InlineKeyboardButton(text="⬅️ Назад", callback_data=f"admin_players_{page - 1}"))
+
+            pagination_buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="admin_noop"))
+
+            if page < total_pages:
+                pagination_buttons.append(
+                    InlineKeyboardButton(text="Вперед ➡️", callback_data=f"admin_players_{page + 1}"))
+
+            if pagination_buttons:
+                builder.row(*pagination_buttons)
+
+            # Другие кнопки
+            builder.row(
+                InlineKeyboardButton(text="🔍 Поиск", callback_data="admin_search"),
+                InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast_start")
+            )
+            builder.row(
+                InlineKeyboardButton(text="🔄 Обновить", callback_data=f"admin_players_{page}"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")
+            )
+
+            await callback.message.edit_text(
+                text,
+                reply_markup=builder.as_markup()
+            )
+
+        except Exception as e:
+            await callback.message.edit_text(f"❌ Ошибка: {str(e)}")
+
+        await callback.answer()
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_search")
+    async def admin_search_start(callback: CallbackQuery):
+        """Начать поиск игрока"""
+        user_id = callback.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                await callback.answer("Нет доступа")
+                return
+        except:
+            await callback.answer("Ошибка доступа")
+            return
+
+        # Сохраняем состояние поиска
+        if user_id not in Admin.admin_temp_data:
+            Admin.admin_temp_data[user_id] = {}
+        Admin.admin_temp_data[user_id]['search_state'] = 'waiting'
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back"))
+
+        await callback.message.edit_text(
+            "🔍 ПОИСК ИГРОКА\n\n"
+            "Отправьте:\n"
+            "• ID игрока (только цифры)\n"
+            "• Имя пользователя (без @)\n"
+            "• Имя (first name)\n\n"
+            "Для отмены нажмите кнопку ниже:",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    @staticmethod
+    async def admin_search_handler(message: Message):
+        """Обработка поискового запроса"""
+        user_id = message.from_user.id
+
+        if user_id not in Admin.admin_temp_data:
+            return
+
+        if Admin.admin_temp_data[user_id].get('search_state') != 'waiting':
+            return
+
+        search_query = message.text.strip()
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                return
+        except:
+            return
+
+        try:
+            # Получаем всех пользователей
+            users = await db.get_all_users()
+
+            # Ищем совпадения
+            results = []
+            for user in users:
+                user_id_str = str(user.get('user_id', ''))
+                username = user.get('username', '').lower()
+                first_name = user.get('first_name', '').lower()
+
+                # Проверяем все варианты
+                if (search_query == user_id_str or
+                        search_query.lower() == username or
+                        search_query.lower() == first_name or
+                        search_query.lower() in username or
+                        search_query.lower() in first_name):
+                    results.append(user)
+
+            # Очищаем состояние поиска
+            Admin.admin_temp_data[user_id]['search_state'] = None
+
+            if not results:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="🔄 Новый поиск", callback_data="admin_search"))
+                builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back"))
+
+                await message.answer(
+                    f"🔍 По запросу '{search_query}' ничего не найдено.\n\n"
+                    "Попробуйте другой запрос:",
+                    reply_markup=builder.as_markup()
+                )
+                return
+
+            # Формируем результаты
+            text = f"🔍 РЕЗУЛЬТАТЫ ПОИСКА: '{search_query}'\n"
+            text += f"📊 Найдено: {len(results)} игроков\n\n"
+
+            for i, user in enumerate(results[:10], 1):
+                user_id = user.get('user_id')
+                username = user.get('username', '')
+                first_name = user.get('first_name', '')
+                money = user.get('money', 0)
+                bronze = user.get('bronze_coin_bought', 0)
+
+                if username:
+                    display_name = f"@{username}"
+                elif first_name:
+                    display_name = first_name
+                else:
+                    display_name = f"ID:{user_id}"
+
+                text += f"{i}. {display_name}\n"
+                text += f"   ID: {user_id}\n"
+                text += f"   Баланс: {format_price(money)}\n"
+                text += f"   Медных: {bronze:,}\n\n"
+
+            if len(results) > 10:
+                text += f"⚠️ Показано 10 из {len(results)} результатов\n"
+
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="🔄 Новый поиск", callback_data="admin_search"),
+                InlineKeyboardButton(text="📊 Список всех", callback_data="admin_players_1")
+            )
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back"))
+
+            await message.answer(text, reply_markup=builder.as_markup())
+
+        except Exception as e:
+            await message.answer(f"❌ Ошибка поиска: {str(e)}")
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_broadcast_start")
+    async def admin_broadcast_start(callback: CallbackQuery):
+        """Начать рассылку"""
+        user_id = callback.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                await callback.answer("Нет доступа")
+                return
+        except:
+            await callback.answer("Ошибка доступа")
+            return
+
+        # Сохраняем состояние рассылки
+        if user_id not in Admin.broadcast_messages:
+            Admin.broadcast_messages[user_id] = {}
+        Admin.broadcast_messages[user_id]['state'] = 'waiting'
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back"))
+
+        await callback.message.edit_text(
+            "📢 РАССЫЛКА СООБЩЕНИЙ\n\n"
+            "Отправьте текст сообщения для рассылки.\n"
+            "Оно будет отправлено ВСЕМ игрокам.\n\n"
+            "Для отмены нажмите кнопку ниже:",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    @staticmethod
+    async def admin_broadcast_message_handler(message: Message):
+        """Обработка текста рассылки"""
+        user_id = message.from_user.id
+
+        if user_id not in Admin.broadcast_messages:
+            return
+
+        if Admin.broadcast_messages[user_id].get('state') != 'waiting':
+            return
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                return
+        except:
+            return
+
+        # Сохраняем сообщение и запрашиваем подтверждение
+        Admin.broadcast_messages[user_id]['message'] = message.text
+        Admin.broadcast_messages[user_id]['state'] = 'confirming'
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Да, отправить", callback_data="admin_broadcast_confirm"),
+            InlineKeyboardButton(text="❌ Нет, отменить", callback_data="admin_broadcast_cancel")
+        )
+
+        await message.answer(
+            f"📢 ПОДТВЕРЖДЕНИЕ РАССЫЛКИ\n\n"
+            f"Сообщение:\n{message.text}\n\n"
+            f"Отправить это сообщение всем игрокам?",
+            reply_markup=builder.as_markup()
+        )
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_broadcast_confirm")
+    async def admin_broadcast_confirm(callback: CallbackQuery):
+        """Подтверждение и отправка рассылки"""
+        user_id = callback.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                await callback.answer("Нет доступа")
+                return
+        except:
+            await callback.answer("Ошибка доступа")
+            return
+
+        if user_id not in Admin.broadcast_messages:
+            await callback.message.edit_text("❌ Нет сохраненного сообщения")
+            await callback.answer()
+            return
+
+        message_text = Admin.broadcast_messages[user_id].get('message', '')
+        if not message_text:
+            await callback.message.edit_text("❌ Текст сообщения пуст")
+            await callback.answer()
+            return
+
+        await callback.message.edit_text("🔄 Начинаю рассылку...")
+
+        try:
+            users = await db.get_all_users()
+            total = len(users)
+            success = 0
+            failed = 0
+            import asyncio
+            # Отправляем всем
+            for user in users:
+                try:
+                    target_id = user.get('user_id')
+                    await callback.bot.send_message(
+                        chat_id=target_id,
+                        text=f"📢 СООБЩЕНИЕ ОТ АДМИНИСТРАТОРА:\n\n{message_text}"
+                    )
+                    success += 1
+                    await asyncio.sleep(0.05)  # Задержка чтобы не превысить лимиты
+                except:
+                    failed += 1
+
+            # Удаляем временные данные
+            if user_id in Admin.broadcast_messages:
+                del Admin.broadcast_messages[user_id]
+
+            await callback.message.edit_text(
+                f"✅ РАССЫЛКА ЗАВЕРШЕНА\n\n"
+                f"📊 Статистика:\n"
+                f"• Всего игроков: {total}\n"
+                f"• Успешно: {success}\n"
+                f"• Не отправлено: {failed}\n\n"
+                f"Сообщение удалено из памяти."
+            )
+
+        except Exception as e:
+            await callback.message.edit_text(f"❌ Ошибка рассылки: {str(e)}")
+
+        await callback.answer()
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_broadcast_cancel")
+    async def admin_broadcast_cancel(callback: CallbackQuery):
+        """Отмена рассылки"""
+        user_id = callback.from_user.id
+
+        if user_id in Admin.broadcast_messages:
+            del Admin.broadcast_messages[user_id]
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="📢 Новая рассылка", callback_data="admin_broadcast_start"))
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back"))
+
+        await callback.message.edit_text(
+            "❌ РАССЫЛКА ОТМЕНЕНА\n\n"
+            "Сообщение удалено из памяти.",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_back")
+    async def admin_back(callback: CallbackQuery):
+        """Возврат в админ-панель"""
+        user_id = callback.from_user.id
+
+        try:
+            from config import ADMINS
+            if user_id not in ADMINS:
+                await callback.answer("Нет доступа")
+                return
+        except:
+            await callback.answer("Ошибка доступа")
+            return
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📊 Список игроков", callback_data="admin_players_1"),
+            InlineKeyboardButton(text="🔍 Поиск игрока", callback_data="admin_search")
+        )
+        builder.row(
+            InlineKeyboardButton(text="📢 Отправить всем", callback_data="admin_broadcast_start"),
+            InlineKeyboardButton(text="🚪 Закрыть", callback_data="admin_close")
+        )
+
+        await callback.message.edit_text(
+            "⚙️ АДМИН-ПАНЕЛЬ\n\nВыберите действие:",
+            reply_markup=builder.as_markup()
+        )
+        await callback.answer()
+
+    @staticmethod
+    @router.callback_query(F.data == "admin_close")
+    async def admin_close(callback: CallbackQuery):
+        """Закрыть админ-панель"""
+        user_id = callback.from_user.id
+
+        # Очищаем все временные данные
+        if user_id in Admin.admin_temp_data:
+            del Admin.admin_temp_data[user_id]
+        if user_id in Admin.broadcast_messages:
+            del Admin.broadcast_messages[user_id]
+
+        await callback.message.delete()
+        await callback.answer("Админ-панель закрыта")
+
+    @router.callback_query(F.data == "admin_noop")
+    async def admin_noop(callback: CallbackQuery):
+        """Пустой callback для кнопок-заглушек"""
+        await callback.answer()
+
+    @staticmethod
+    @router.message(Command("cancel"))
+    async def cancel_operation(message: Message):
+        """Отмена текущей операции админа"""
+        user_id = message.from_user.id
+
+        if user_id in Admin.admin_temp_data:
+            del Admin.admin_temp_data[user_id]
+
+        if user_id in Admin.broadcast_messages:
+            del Admin.broadcast_messages[user_id]
+
+        await message.answer("✅ Текущая операция отменена")
+
+    @staticmethod
+    async def process_search_query(message: Message):
+        """Обработка поискового запроса"""
+        user_id = message.from_user.id
+        search_query = message.text.strip()
+
+        # Весь код из старого admin_search_handler, но БЕЗ @router.message
+        try:
+            users = await db.get_all_users()
+            # ... остальной код поиска
+
+        except Exception as e:
+            await message.answer(f"❌ Ошибка поиска: {str(e)}")
+
+    @staticmethod
+    async def process_broadcast_message(message: Message):
+        """Обработка текста рассылки"""
+        user_id = message.from_user.id
+
+        # Сохраняем сообщение и запрашиваем подтверждение
+        Admin.broadcast_messages[user_id]['message'] = message.text
+        Admin.broadcast_messages[user_id]['state'] = 'confirming'
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Да, отправить", callback_data="admin_broadcast_confirm"),
+            InlineKeyboardButton(text="❌ Нет, отменить", callback_data="admin_broadcast_cancel")
+        )
+
+        await message.answer(
+            f"📢 ПОДТВЕРЖДЕНИЕ РАССЫЛКИ\n\n"
+            f"Сообщение:\n{message.text}\n\n"
+            f"Отправить это сообщение всем игрокам?",
+            reply_markup=builder.as_markup()
+        )
+
 # ========== ОБРАБОТКА ВСЕХ ОСТАЛЬНЫХ СООБЩЕНИЙ ==========
 @router.message()
 async def handle_all_messages(message: Message):
     """Обработчик всех остальных сообщений"""
     user_id = message.from_user.id
+
+    # Сначала проверяем, не находится ли админ в процессе операции
+    try:
+        from config import ADMINS
+        is_admin = user_id in ADMINS
+    except ImportError:
+        is_admin = False
+
+    if is_admin:
+        # Проверяем состояния админа
+        if user_id in Admin.admin_temp_data and Admin.admin_temp_data[user_id].get('search_state') == 'waiting':
+            # Админ в процессе поиска - обрабатываем
+            await Admin.process_search_query(message)
+            return
+
+        if user_id in Admin.broadcast_messages and Admin.broadcast_messages[user_id].get('state') == 'waiting':
+            # Админ в процессе рассылки - обрабатываем
+            await Admin.process_broadcast_message(message)
+            return
+
     first_name = message.from_user.first_name
     username = message.from_user.username or first_name or "Пользователь"
 
@@ -478,7 +1044,7 @@ async def handle_all_messages(message: Message):
 
     # Список команд, которые мы обрабатываем
     processed_commands = [
-        "Профиль", "🛒 Купить медные монеты", "🔄 Обменять монеты",
+        "💼 Профиль", "🛒 Купить медные монеты", "🔄 Обменять монеты",
         "🏆 Таблица игроков", "❓ Помощь", "Справка по боту",
         "Команды", "Советы", "Активы в игре", "↩️ Назад в меню"
     ]
@@ -487,17 +1053,6 @@ async def handle_all_messages(message: Message):
         if not message.text.startswith('/'):
             await message.answer(get_default_message_text())
 
-@router.message(Command("top_money"))
-@router.message(F.text == "💰 Топ по деньгам")
-async def show_money_top(message: Message):
-    """Показывает топ по деньгам"""
-    await show_leaderboard_command(message, rating_type="money")
-
-@router.message(Command("top_coins"))
-@router.message(F.text == "🪙 Топ по монетам")
-async def show_coins_top(message: Message):
-    """Показывает топ по купленным монетам"""
-    await show_leaderboard_command(message, rating_type="coins")
 
 
 print("✅ handlers/main_handlers.py загружен успешно")
