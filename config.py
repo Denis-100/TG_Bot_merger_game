@@ -1,0 +1,3 @@
+
+BOT_TOKEN = "REVOKED_TOKEN_REMOVED"
+DATA_FILE = "users.json"

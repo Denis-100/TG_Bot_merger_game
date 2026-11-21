@@ -1,0 +1,89 @@
+# texts/help_texts.py
+from utils.income_config import INCOME_PER_SECOND, EXCHANGE_RATES
+from utils.formatters import get_coin_display_name, format_price
+
+
+def get_help_main_text() -> str:
+    return (
+        "📖 РАЗДЕЛЫ ПОМОЩИ:\n\n"
+        "Выберите раздел помощи, который вас интересует:"
+    )
+
+
+def get_bot_info_text() -> str:
+    return (
+        "🤖 СПРАВКА ПО БОТУ:\n\n"
+        "Это бот для заработка и объединения монет!\n\n"
+        "💰 Как работает бот:\n"
+        "• Вы начинаете с 0 монет и получаете первую медную монету бесплатно\n"
+        "• Каждая монета приносит доход каждую секунду\n"
+        "• Объединяйте 3 одинаковые монеты, чтобы получить 1 монету следующего уровня\n"
+        "• Участвуйте в рейтинге игроков и соревнуйтесь за первые места!\n\n"
+        "💡 Основная цель - заработать как можно больше монет!"
+    )
+
+
+def get_commands_text() -> str:
+    return (
+        "📋 КОМАНДЫ И КНОПКИ:\n\n"
+        "Основное меню:\n"
+        "• Профиль - ваш баланс и активы\n"
+        "• Купить медные монеты - покупка основных монет\n"
+        "• Обменять монеты - автоматический обмен монет\n"
+        "• 🏆 Таблица игроков - рейтинг всех игроков\n"
+        "• Помощь - эта справка\n\n"
+        "Команды в чате:\n"
+        "• /start - запустить бота\n"
+        "• /top или /игроки - таблица лидеров\n"
+        "• /help - справка\n"
+    )
+
+
+def get_tips_text() -> str:
+    return (
+        "💡 СОВЕТЫ ПО ИГРЕ:\n\n"
+        "1. Начинайте с покупки медных монет\n"
+        "2. Покупайте по 3 монеты для быстрого обмена\n"
+        "3. Регулярно обменивайте монеты в более ценные\n"
+        "4. Следите за ценой следующей медной монеты\n"
+        "5. Участвуйте в таблице лидеров\n"
+        "6. Возвращайтесь в игру, чтобы получить пассивный доход\n\n"
+        "📈 Стратегия:\n"
+        "• Сначала накопите 3 медные монеты и обменяйте в медный слиток\n"
+        "• Повторяйте до получения железных, серебряных и т.д. монет\n"
+        "• Каждый уровень монет приносит больше дохода!"
+    )
+
+
+def get_assets_info_text() -> str:
+    """Создает описание активов на основе конфигурации доходов"""
+    text = "💰 АКТИВЫ В ИГРЕ:\n\n"
+    text += "Доход указан за 1 секунду:\n\n"
+
+    # Группируем активы по категориям для лучшего отображения
+    categories = {
+        "🟤 Базовые": ['bronze_coin', 'bronze_bar'],
+        "⚙️ Железные": ['iron_coin', 'iron_bar'],
+        "⚪ Серебряные": ['silver_coin', 'silver_bar'],
+        "🟫 Бронзовые (высший сорт)": ['bronze_coin_high', 'bronze_bar_high'],
+        "🟡 Золотые": ['gold_coin', 'gold_bar'],
+        "💎 Драгоценные камни": ['emerald', 'sapphire', 'ruby'],
+        "⚜️ Платиновые": ['platinum_coin', 'platinum_bar'],
+        "💎 Алмаз": ['diamond']
+    }
+
+    for category_name, coin_types in categories.items():
+        text += f"{category_name}:\n"
+        for coin_type in coin_types:
+            display_name = get_coin_display_name(coin_type)
+            income = INCOME_PER_SECOND.get(coin_type, 0)
+            exchange_rate = EXCHANGE_RATES.get(coin_type, 0)
+
+            if exchange_rate > 0:
+                text += f"• {display_name}: {format_price(income)}/сек (нужно {exchange_rate} для обмена)\n"
+            else:
+                text += f"• {display_name}: {format_price(income)}/сек\n"
+        text += "\n"
+
+    text += "📊 Обмен: 3 монеты = 1 монета следующего уровня"
+    return text
