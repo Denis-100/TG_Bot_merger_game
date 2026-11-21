@@ -72,9 +72,9 @@ def get_assets_info_text() -> str:
         "💎 Драгоценные камни": ['emerald', 'sapphire', 'ruby'],
         "⚜️ Платиновые": ['platinum_coin', 'platinum_bar'],
         "💎 Алмаз": ['diamond'],
-        "🔥 Новые": ['lava_coin']
+        "🔥 Эксклюзивные": ['lava_coin']
     }
-
+    count = 1
     for category_name, coin_types in categories.items():
         text += f"{category_name}:\n"
         for coin_type in coin_types:
@@ -83,10 +83,11 @@ def get_assets_info_text() -> str:
             exchange_rate = EXCHANGE_RATES.get(coin_type, 0)
 
             if exchange_rate > 0:
-                text += f"• {display_name}: {format_price(income)}/сек (нужно {exchange_rate} для обмена)\n"
+                text += f"{count} {display_name}: {format_price(income)}/сек (нужно {exchange_rate} для обмена)\n"
             else:
-                text += f"• {display_name}: {format_price(income)}/сек (максимальный уровень)\n"
+                text += f"{count} {display_name}: {format_price(income)}/сек (максимальный уровень)\n"
         text += "\n"
+        count += 1
 
     text += "📊 Обмен: 3 монеты = 1 монета следующего уровня"
     return text
