@@ -157,7 +157,7 @@ def get_leaderboard_text(sorted_users, user_position, current_user_data,
         if user_position > 1 and len(sorted_users) > 1:
             above_user = sorted_users[user_position - 2][1]
             above_total = sum(above_user.get('coins', {}).values())
-            needed = above_total - user_total_coins + 1
+            needed = above_total - above_user.get('coins', {}).values() + 1
             text += f"📈 До #{user_position - 1} нужно: {needed:,} монет\n"
 
     else:  # money

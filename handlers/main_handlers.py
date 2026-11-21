@@ -29,224 +29,296 @@ def ensure_user_income(user: dict) -> dict:
     return user
 
 
-# ========== ОСНОВНЫЕ ОБРАБОТЧИКИ ==========
-@router.message(Command("start"))
-async def start_menu(message: Message):
-    """Обработчик команды /start"""
-    user_id = message.from_user.id
-    username = message.from_user.first_name or message.from_user.username or "Пользователь"
+# ========== СТАРТ И БЕСПЛАТНАЯ МОНЕТА ==========
+class Start:
+    @router.message(Command("start"))
+    async def start_menu(message: Message):
+        """Обработчик команды /start"""
+        user_id = message.from_user.id
+        username = message.from_user.first_name or message.from_user.username or "Пользователь"
 
-    # Получаем пользователя
-    user = await db.get_or_create_user(user_id, username)
+        # Получаем пользователя
+        user = await db.get_or_create_user(user_id, username)
 
-    # Проверяем, есть ли у пользователя первая монета
-    if user['coins'].get('bronze_coin', 0) == 0 and user['bronze_coin_bought'] == 0:
-        await message.answer(
-            get_welcome_text(username),
-            reply_markup=get_first_coin_keyboard()
-        )
-    else:
-        await message.answer("Меню", reply_markup=get_main_keyboard())
-        await message.answer(f"С возвращением, {username}!")
-
-
-@router.callback_query(F.data == "first_free_coin")
-async def get_first_free_coin(callback: CallbackQuery):
-    """Обработчик получения первой бесплатной монеты"""
-    user_id = callback.from_user.id
-    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-
-    # Получаем пользователя
-    user = await db.get_or_create_user(user_id, username)
-
-    # Добавляем первую медную монету
-    coins = user['coins'].copy()
-    coins['bronze_coin'] = coins.get('bronze_coin', 0) + 1
-
-    # Обновляем данные
-    await db.update_user_coins(user_id, coins)
-    await db.update_bronze_bought(user_id, 1)
-
-    await callback.message.answer(get_first_coin_text(), reply_markup=get_main_keyboard())
-    await callback.answer()
+        # Проверяем, есть ли у пользователя первая монета
+        if user['coins'].get('bronze_coin', 0) == 0 and user['bronze_coin_bought'] == 0:
+            await message.answer(
+                get_welcome_text(username),
+                reply_markup=get_first_coin_keyboard()
+            )
+        else:
+            await message.answer("Меню", reply_markup=get_main_keyboard())
+            await message.answer(f"С возвращением, {username}!")
 
 
-@router.message(F.text == "💼 Профиль")
-async def profile(message: Message):
-    """Обработчик кнопки Профиль"""
-    user_id = message.from_user.id
-    username = message.from_user.username or message.from_user.first_name or "Пользователь"
+    @router.callback_query(F.data == "first_free_coin")
+    async def get_first_free_coin(callback: CallbackQuery):
+        """Обработчик получения первой бесплатной монеты"""
+        user_id = callback.from_user.id
+        username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
 
-    # Получаем пользователя
-    user = await db.get_or_create_user(user_id, username)
-    user = ensure_user_income(user)
+        # Получаем пользователя
+        user = await db.get_or_create_user(user_id, username)
 
-    next_price = calculate_bronze_coin_price(user, 1)
+        # Добавляем первую медную монету
+        coins = user['coins'].copy()
+        coins['bronze_coin'] = coins.get('bronze_coin', 0) + 1
 
-    coins_list = []
-    for coin_type in get_all_coin_types():
-        count = user['coins'].get(coin_type, 0)
-        if count > 0:
-            display_name = get_coin_name(coin_type)
-            income_per_sec = calculate_coin_income(coin_type, count)
-            coins_list.append(f"  {display_name}: {count} (+{format_price(income_per_sec)}/сек)")
+        # Обновляем данные
+        await db.update_user_coins(user_id, coins)
+        await db.update_bronze_bought(user_id, 1)
 
-    await message.answer(get_profile_text(user, str(next_price), coins_list))
+        await callback.message.answer(get_first_coin_text(), reply_markup=get_main_keyboard())
+        await callback.answer()
 
 
-@router.message(F.text == "❓ Помощь")
-async def help_command(message: Message):
-    """Обработчик кнопки ❓ Помощь - показывает меню помощи"""
-    await message.answer(get_help_main_text(), reply_markup=get_help_menu())
-
-
-@router.message(F.text == "Справка по боту")
-async def bot_info(message: Message):
-    """Обработчик кнопки Справка по боту"""
-    await message.answer(get_bot_info_text(), reply_markup=get_help_menu())
-
-
-@router.message(F.text == "Команды")
-async def commands_info(message: Message):
-    """Обработчик кнопки Команды"""
-    await message.answer(get_commands_text(), reply_markup=get_help_menu())
-
-
-@router.message(F.text == "Советы")
-async def tips_info(message: Message):
-    """Обработчик кнопки Советы"""
-    await message.answer(get_tips_text(), reply_markup=get_help_menu())
-
-
-@router.message(F.text == "Активы в игре")
-async def assets_info(message: Message):
-    """Обработчик кнопки Активы в игре"""
-    await message.answer(get_assets_info_text(), reply_markup=get_help_menu())
-
-
-@router.message(F.text == "↩️ Назад в меню")
-async def back_to_main_menu(message: Message):
-    """Обработчик кнопки Назад в меню"""
-    await message.answer("Меню", reply_markup=get_main_keyboard())
-
-
-# ========== ПОКУПКА МОНЕТ ==========
-@router.message(F.text == "🛒 Купить медные монеты")
-async def buy_coin_menu(message: Message):
-    """Обработчик кнопки Купить медные монеты"""
-    user_id = message.from_user.id
-    username = message.from_user.username or message.from_user.first_name or "Пользователь"
-
-    # Получаем пользователя
-    user = await db.get_or_create_user(user_id, username)
-    user = ensure_user_income(user)
-
-    if user['bronze_coin_bought'] == 0:
-        await message.answer(get_no_coins_text(), reply_markup=get_first_coin_keyboard())
-        return
-
-    next_price = calculate_bronze_coin_price(user, 1)
-
-    await message.answer(
-        get_buy_menu_text(
-            format_price(user['money']),
-            user['bronze_coin_bought'],
-            format_price(next_price),
-            format_price(user['online_income'])  # Используем уже рассчитанный доход
-        ),
-        reply_markup=get_buy_coins_keyboard(user)
-    )
-
-
-@router.callback_query(lambda c: c.data.startswith("buy_bronze"))
-async def buy_bronze_coins(callback: CallbackQuery):
-    """Обработчик покупки медных монет"""
-    user_id = callback.from_user.id
-    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-
-    try:
-        # Парсим количество монет из callback_data
-        data_parts = callback.data.split("_")
-        count = int(data_parts[-1]) if len(data_parts) > 2 else 1
+# ========== ГЛАВНОЕ МЕНЮ ==========
+class MenuButton:
+    @router.message(F.text == "💼 Профиль")
+    async def profile(message: Message):
+        """Обработчик кнопки Профиль"""
+        user_id = message.from_user.id
+        username = message.from_user.username or message.from_user.first_name or "Пользователь"
 
         # Получаем пользователя
         user = await db.get_or_create_user(user_id, username)
         user = ensure_user_income(user)
 
-        # Рассчитываем стоимость
-        total_price = calculate_bronze_coin_price(user, count)
+        next_price = calculate_bronze_coin_price(user, 1)
 
-        # Проверяем баланс
-        if user['money'] >= total_price or total_price == 0:
-            prices = get_price_breakdown(user, count)
+        coins_list = []
+        for coin_type in get_all_coin_types():
+            count = user['coins'].get(coin_type, 0)
+            if count > 0:
+                display_name = get_coin_name(coin_type)
+                income_per_sec = calculate_coin_income(coin_type, count)
+                coins_list.append(f"  {display_name}: {count} (+{format_price(income_per_sec)}/сек)")
 
-            if total_price > 0:
-                # Вычитаем стоимость
+        await message.answer(get_profile_text(user, str(next_price), coins_list))
+
+
+    @router.message(F.text == "❓ Помощь")
+    async def help_command(message: Message):
+        """Обработчик кнопки ❓ Помощь - показывает меню помощи"""
+        await message.answer(get_help_main_text(), reply_markup=get_help_menu())
+
+
+    @router.message(F.text == "Справка по боту")
+    async def bot_info(message: Message):
+        """Обработчик кнопки Справка по боту"""
+        await message.answer(get_bot_info_text(), reply_markup=get_help_menu())
+
+
+    @router.message(F.text == "Команды")
+    async def commands_info(message: Message):
+        """Обработчик кнопки Команды"""
+        await message.answer(get_commands_text(), reply_markup=get_help_menu())
+
+
+    @router.message(F.text == "Советы")
+    async def tips_info(message: Message):
+        """Обработчик кнопки Советы"""
+        await message.answer(get_tips_text(), reply_markup=get_help_menu())
+
+
+    @router.message(F.text == "Активы в игре")
+    async def assets_info(message: Message):
+        """Обработчик кнопки Активы в игре"""
+        await message.answer(get_assets_info_text(), reply_markup=get_help_menu())
+
+
+    @router.message(F.text == "↩️ Назад в меню")
+    async def back_to_main_menu(message: Message):
+        """Обработчик кнопки Назад в меню"""
+        await message.answer("Меню", reply_markup=get_main_keyboard())
+
+
+# ========== ПОКУПКА МОНЕТ ==========
+class BuyCoin:
+    last_shop_messages = {}
+    last_purchase_messages = {}
+
+    @staticmethod
+    @router.message(F.text == "🛒 Купить медные монеты")
+    async def buy_coin_menu(message: Message):
+        """Обработчик кнопки купить медные монеты"""
+        user_id = message.from_user.id
+        if user_id in BuyCoin.last_purchase_messages:
+            del BuyCoin.last_purchase_messages[user_id]
+
+        if user_id in BuyCoin.last_shop_messages:
+            try:
+                await message.bot.delete_message(
+                    chat_id=user_id,
+                    message_id=BuyCoin.last_shop_messages[user_id]
+                )
+            except:
+                pass
+
+        username = message.from_user.username or message.from_user.first_name or "Пользователь"
+
+        # Получаем пользователя
+        user = await db.get_or_create_user(user_id, username)
+        user = ensure_user_income(user)
+
+        if user['bronze_coin_bought'] == 0:
+            await message.answer(get_no_coins_text(), reply_markup=get_first_coin_keyboard())
+            return
+
+        next_price = calculate_bronze_coin_price(user, 1)
+
+        # СОХРАНЯЕМ ID СООБЩЕНИЯ С МЕНЮ
+        shop_message = await message.answer(
+            get_buy_menu_text(
+                format_price(user['money']),
+                user['bronze_coin_bought'],
+                format_price(next_price),
+                format_price(user['online_income'])
+            ),
+            reply_markup=get_buy_coins_keyboard(user)  # ← клавиатура с ценами
+        )
+
+        BuyCoin.last_shop_messages[user_id] = shop_message.message_id  # ← СОХРАНИЛИ ID
+
+    @staticmethod
+    @router.callback_query(lambda c: c.data.startswith("buy_bronze"))
+    async def buy_bronze_coins(callback: CallbackQuery):
+        """Обработчик покупки медных монет"""
+        user_id = callback.from_user.id
+
+        try:
+            # Парсим количество монет
+            data_parts = callback.data.split("_")
+            count = int(data_parts[-1]) if len(data_parts) > 2 else 1
+
+            # Получаем пользователя
+            user = await db.get_or_create_user(user_id, "")
+            user = ensure_user_income(user)
+
+            # Проверяем баланс
+            total_price = calculate_bronze_coin_price(user, count)
+
+            if user['money'] >= total_price:
+                # УДАЛЯЕМ ПРЕДЫДУЩЕЕ СООБЩЕНИЕ О ПОКУПКЕ (если есть)
+                if user_id in BuyCoin.last_purchase_messages:
+                    try:
+                        await callback.bot.delete_message(
+                            chat_id=user_id,
+                            message_id=BuyCoin.last_purchase_messages[user_id]
+                        )
+                    except:
+                        pass  # Если сообщение уже удалено
+
+                # Выполняем покупку
                 new_balance = user['money'] - total_price
                 await db.update_user_money(user_id, new_balance)
 
-            # Добавляем монеты
-            coins = user['coins'].copy()
-            coins['bronze_coin'] = coins.get('bronze_coin', 0) + count
+                # Обновляем монеты
+                coins = user['coins'].copy()
+                coins['bronze_coin'] = coins.get('bronze_coin', 0) + count
+                await db.update_user_coins(user_id, coins)
+                await db.update_bronze_bought(user_id, user['bronze_coin_bought'] + count)
 
-            # Обновляем монеты и количество купленных
-            await db.update_user_coins(user_id, coins)
-            await db.update_bronze_bought(user_id, user['bronze_coin_bought'] + count)
+                # Получаем обновленные данные
+                updated_user = await db.get_or_create_user(user_id, "")
+                updated_user = ensure_user_income(updated_user)
 
-            # Получаем обновленные данные для расчета дохода
-            updated_user = await db.get_or_create_user(user_id, username)
-            updated_user = ensure_user_income(updated_user)
-
-            price_details = ""
-            if count <= 5:
-                price_details = "\n📋 Цены поштучно:\n"
-                for i, price in enumerate(prices, 1):
-                    price_text = "БЕСПЛАТНО" if price == 0 else format_price(price)
-                    price_details += f"  {i}. {price_text}\n"
-
-            await callback.message.answer(
-                get_buy_success_text(
-                    count,
-                    format_price(total_price),
-                    format_price(updated_user['money']),
-                    format_price(updated_user['online_income']),
-                    price_details
+                # Отправляем НОВОЕ сообщение
+                response = await callback.message.answer(
+                    get_buy_success_text(
+                        count,
+                        format_price(total_price),
+                        format_price(updated_user['money']),
+                        format_price(updated_user['online_income'])
+                    )
                 )
-            )
-        else:
-            await callback.message.answer(
-                get_buy_failed_text(
-                    format_price(user['money']),
-                    format_price(total_price),
-                    format_price(total_price - user['money'])
-                )
-            )
 
+                # СОХРАНЯЕМ ID нового сообщения
+                BuyCoin.last_purchase_messages[user_id] = response.message_id
+
+                # ОБНОВЛЯЕМ МЕНЮ С ЦЕНАМИ
+                if user_id in BuyCoin.last_shop_messages:
+                    try:
+                        # Обновляем текст и клавиатуру меню
+                        await callback.bot.edit_message_text(
+                            chat_id=user_id,
+                            message_id=BuyCoin.last_shop_messages[user_id],
+                            text=get_buy_menu_text(
+                                format_price(updated_user['money']),
+                                updated_user['bronze_coin_bought'],
+                                format_price(calculate_bronze_coin_price(updated_user, 1)),
+                                format_price(updated_user['online_income'])
+                            ),
+                            reply_markup=get_buy_coins_keyboard(updated_user)  # ← ОБНОВЛЕННАЯ КЛАВИАТУРА
+                        )
+                    except Exception as e:
+                        # Если не удалось обновить (сообщение удалено и т.д.)
+                        print(f"Не удалось обновить меню: {e}")
+
+            else:
+                # Обработка недостатка денег (также удаляем предыдущее сообщение)
+                if user_id in BuyCoin.last_purchase_messages:
+                    try:
+                        await callback.bot.delete_message(
+                            chat_id=user_id,
+                            message_id=BuyCoin.last_purchase_messages[user_id]
+                        )
+                    except:
+                        pass
+
+                response = await callback.message.answer(
+                    get_buy_failed_text(
+                        format_price(user['money']),
+                        format_price(total_price),
+                        format_price(total_price - user['money'])
+                    )
+                )
+                BuyCoin.last_purchase_messages[user_id] = response.message_id
+
+                from datetime import datetime
+
+                BuyCoin.last_purchase_messages[user_id] = response.message_id
+
+            await callback.answer()
+
+        except Exception as e:
+            await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+    @staticmethod
+    @router.callback_query(F.data == "price_details")
+    async def show_price_details(callback: CallbackQuery):
+        """Обработчик показа деталей цен"""
+        user_id = callback.from_user.id
+        username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
+
+        # Получаем пользователя
+        user = await db.get_or_create_user(user_id, username)
+
+        preview = get_next_prices_preview(user, 10)
+
+        await callback.message.answer(get_price_details_text(preview, user['bronze_coin_bought']))
         await callback.answer()
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
-@router.callback_query(F.data == "price_details")
-async def show_price_details(callback: CallbackQuery):
-    """Обработчик показа деталей цен"""
-    user_id = callback.from_user.id
-    username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-
-    # Получаем пользователя
-    user = await db.get_or_create_user(user_id, username)
-
-    preview = get_next_prices_preview(user, 10)
-
-    await callback.message.answer(get_price_details_text(preview, user['bronze_coin_bought']))
-    await callback.answer()
-
-
-@router.callback_query(F.data == "back_to_menu")
-async def back_to_menu(callback: CallbackQuery):
-    """Обработчик возврата в меню"""
-    await callback.message.answer(get_back_to_menu_text(), reply_markup=get_main_keyboard())
-    await callback.answer()
+    @staticmethod
+    @router.callback_query(F.data == "back_to_menu")
+    async def back_to_menu(callback: CallbackQuery):
+        """Обработчик возврата в меню и удаления прошлого информационного сообщения"""
+        user_id = callback.from_user.id
+        if user_id in BuyCoin.last_purchase_messages:
+            # Удаляем сообщение о покупке
+            try:
+                await callback.bot.delete_message(
+                    chat_id=user_id,
+                    message_id=BuyCoin.last_purchase_messages[user_id]
+                )
+            except:
+                pass
+            del BuyCoin.last_purchase_messages[user_id]
+        """Обработчик возврата в меню"""
+        await callback.message.answer(get_back_to_menu_text(), reply_markup=get_main_keyboard())
+        await callback.answer()
 
 
 # ========== ОБМЕН МОНЕТ ==========
@@ -294,184 +366,187 @@ async def exchange_coins(message: Message):
 
 
 # ========== ТАБЛИЦА ЛИДЕРОВ ==========
-@router.message(Command("top"))
-@router.message(Command("игроки"))
-@router.message(Command("players"))
-@router.message(F.text == "🏆 Таблица игроков")
-async def show_leaderboard_command(message: Message, rating_type: str = "money", user_id: int = None):
-    """Обработчик показа таблицы лидеров"""
-    try:
-        # Получаем всех пользователей
-        users_data = await db.get_all_users()
-        target_user_id = user_id if user_id is not None else message.from_user.id
+class Leaderboard:
+    @router.message(Command("top"))
+    @router.message(Command("игроки"))
+    @router.message(Command("players"))
+    @router.message(F.text == "🏆 Таблица игроков")
+    async def show_leaderboard_command(message: Message, rating_type: str = "money", user_id: int = None):
+        """Обработчик показа таблицы лидеров"""
+        try:
+            # Получаем всех пользователей
+            users_data = await db.get_all_users()
+            target_user_id = user_id if user_id is not None else message.from_user.id
 
-        if not users_data:
-            await message.answer(get_no_users_text())
-            return
+            if not users_data:
+                await message.answer(get_no_users_text())
+                return
 
-        # Сортируем в зависимости от типа рейтинга
-        if rating_type == "coins":
-            # Сортируем по количеству купленных медных монет
-            sorted_users_data = sorted(
-                users_data,
-                key=lambda x: x.get('bronze_coin_bought', 0),
-                reverse=True
-            )
-            rating_title = "🏅 Топ по купленным монетам"
-        else:
-            # По умолчанию сортируем по деньгам
-            sorted_users_data = sorted(
-                users_data,
-                key=lambda x: x.get('money', 0),
-                reverse=True
-            )
-            rating_title = "💰 Топ по деньгам"
-
-        # Преобразуем данные
-        sorted_users = []
-        for user_data in sorted_users_data:
-            user_data = ensure_user_income(user_data)
-            sorted_users.append((str(user_data['user_id']), user_data))
-
-        user_id = target_user_id
-        user_id_str = str(user_id)
-        user_position = 0
-        current_user_data = None
-
-        # Находим позицию текущего пользователя
-        for i, (uid, user_data) in enumerate(sorted_users, 1):
-            if uid == user_id_str:
-                user_position = i
-                current_user_data = user_data
-                break
-
-        # Если пользователя нет в списке, получаем его данные
-        if not current_user_data:
-            username = message.from_user.username or message.from_user.first_name or "Пользователь"
-            current_user_data = await db.get_or_create_user(user_id, username)
-            current_user_data = ensure_user_income(current_user_data)
-
-            # Ищем позицию в зависимости от типа рейтинга
-            for i, (_, user_data) in enumerate(sorted_users, 1):
-                if rating_type == "coins":
-                    if user_data.get('bronze_coin_bought', 0) < current_user_data.get('bronze_coin_bought', 0):
-                        user_position = i
-                        break
-                else:  # money
-                    if user_data.get('money', 0) < current_user_data.get('money', 0):
-                        user_position = i
-                        break
+            # Сортируем в зависимости от типа рейтинга
+            if rating_type == "coins":
+                # Сортируем по количеству купленных медных монет
+                sorted_users_data = sorted(
+                    users_data,
+                    key=lambda x: x.get('bronze_coin_bought', 0),
+                    reverse=True
+                )
+                rating_title = "🏅 Топ по купленным монетам"
             else:
-                user_position = len(sorted_users) + 1
+                # По умолчанию сортируем по деньгам
+                sorted_users_data = sorted(
+                    users_data,
+                    key=lambda x: x.get('money', 0),
+                    reverse=True
+                )
+                rating_title = "💰 Топ по деньгам"
 
-        # Отправляем сообщение с соответствующей клавиатурой
-        await message.answer(
-            get_leaderboard_text(
-                sorted_users,
-                user_position,
-                current_user_data
-            ),
-            reply_markup=get_leaderboard_keyboard(rating_type)
-        )
-    except Exception as e:
-        await message.answer(f"❌ Ошибка при загрузке таблицы лидеров: {str(e)}")
+            # Преобразуем данные
+            sorted_users = []
+            for user_data in sorted_users_data:
+                user_data = ensure_user_income(user_data)
+                sorted_users.append((str(user_data['user_id']), user_data))
 
+            user_id = target_user_id
+            user_id_str = str(user_id)
+            user_position = 0
+            current_user_data = None
 
-@router.callback_query(F.data.startswith("leaderboard_"))
-async def leaderboard_callback_handler(callback: CallbackQuery):
-    """Обработчик callback для переключения между типами рейтинга"""
-    try:
-        data = callback.data
-
-        if data == "leaderboard_money":
-            await callback.message.delete()  # Удаляем старое сообщение
-            await show_leaderboard_command(callback.message, rating_type="money", user_id=callback.from_user.id)
-
-        elif data == "leaderboard_coins":
-            await callback.message.delete()  # Удаляем старое сообщение
-            await show_leaderboard_command(callback.message, rating_type="coins", user_id=callback.from_user.id)
-
-        elif data == "leaderboard_back":
-            await callback.message.delete()  # Удаляем старое сообщение
-            await callback.message.answer(
-                "🏠 Возвращаемся в главное меню",
-                reply_markup=get_main_keyboard()
-            )
-
-        await callback.answer()
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-@router.callback_query(F.data == "refresh_leaderboard")
-async def refresh_leaderboard(callback: CallbackQuery):
-    """Обработчик обновления таблицы лидеров"""
-    try:
-        # Удаляем старое сообщение
-        await callback.message.delete()
-
-        # Получаем всех пользователей
-        sorted_users_data = await db.get_all_users()
-
-        if not sorted_users_data:
-            await callback.message.answer(get_no_users_text())
-            return
-
-        # Преобразуем данные в формат для функции get_leaderboard_text
-        sorted_users = []
-        for user_data in sorted_users_data:
-            user_data = ensure_user_income(user_data)
-            sorted_users.append((str(user_data['user_id']), user_data))
-
-        user_id = callback.from_user.id
-        user_id_str = str(user_id)
-        user_position = 0
-        current_user_data = None
-
-        # Находим позицию текущего пользователя
-        for i, (uid, user_data) in enumerate(sorted_users, 1):
-            if uid == user_id_str:
-                user_position = i
-                current_user_data = user_data
-                break
-
-        # Если пользователя нет в списке, получаем его данные
-        if not current_user_data:
-            username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-            current_user_data = await db.get_or_create_user(user_id, username)
-            current_user_data = ensure_user_income(current_user_data)
-
-            # Ищем позицию среди всех пользователей
-            for i, (_, user_data) in enumerate(sorted_users, 1):
-                if user_data['money'] < current_user_data['money']:
+            # Находим позицию текущего пользователя
+            for i, (uid, user_data) in enumerate(sorted_users, 1):
+                if uid == user_id_str:
                     user_position = i
+                    current_user_data = user_data
                     break
-            else:
-                user_position = len(sorted_users) + 1
 
-        await callback.message.answer(
-            get_leaderboard_text(sorted_users, user_position, current_user_data),
-            reply_markup=get_leaderboard_keyboard()
-        )
+            # Если пользователя нет в списке, получаем его данные
+            if not current_user_data:
+                username = message.from_user.username or message.from_user.first_name or "Пользователь"
+                current_user_data = await db.get_or_create_user(user_id, username)
+                current_user_data = ensure_user_income(current_user_data)
 
-        await callback.answer()
-    except Exception as e:
-        await callback.message.answer(f"❌ Ошибка при обновлении таблицы лидеров: {str(e)}")
-        await callback.answer()
+                # Ищем позицию в зависимости от типа рейтинга
+                for i, (_, user_data) in enumerate(sorted_users, 1):
+                    if rating_type == "coins":
+                        if user_data.get('bronze_coin_bought', 0) < current_user_data.get('bronze_coin_bought', 0):
+                            user_position = i
+                            break
+                    else:  # money
+                        if user_data.get('money', 0) < current_user_data.get('money', 0):
+                            user_position = i
+                            break
+                else:
+                    user_position = len(sorted_users) + 1
+
+            # Отправляем сообщение с соответствующей клавиатурой
+            await message.answer(
+                get_leaderboard_text(
+                    sorted_users,
+                    user_position,
+                    current_user_data
+                ),
+                reply_markup=get_leaderboard_keyboard(rating_type)
+            )
+        except Exception as e:
+            await message.answer(f"❌ Ошибка при загрузке таблицы лидеров: {str(e)}")
 
 
-@router.message(Command("top_money"))
-@router.message(F.text == "💰 Топ по деньгам")
-async def show_money_top(message: Message):
-    """Показывает топ по деньгам"""
-    await show_leaderboard_command(message, rating_type="money")
+    @router.callback_query(F.data.startswith("leaderboard_"))
+    async def leaderboard_callback_handler(callback: CallbackQuery):
+        """Обработчик callback для переключения между типами рейтинга"""
+        try:
+            data = callback.data
 
-@router.message(Command("top_coins"))
-@router.message(F.text == "🪙 Топ по монетам")
-async def show_coins_top(message: Message):
-    """Показывает топ по купленным монетам"""
-    await show_leaderboard_command(message, rating_type="coins")
+            if data == "leaderboard_money":
+                await callback.message.delete()  # Удаляем старое сообщение
+                await Leaderboard.show_leaderboard_command(callback.message, rating_type="money", user_id=callback.from_user.id)
 
+            elif data == "leaderboard_coins":
+                await callback.message.delete()  # Удаляем старое сообщение
+                await Leaderboard.show_leaderboard_command(callback.message, rating_type="coins", user_id=callback.from_user.id)
+
+            elif data == "leaderboard_back":
+                await callback.message.delete()  # Удаляем старое сообщение
+                await callback.message.answer(
+                    "🏠 Возвращаемся в главное меню",
+                    reply_markup=get_main_keyboard()
+                )
+
+            await callback.answer()
+        except Exception as e:
+            await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+    @router.callback_query(F.data == "refresh_leaderboard")
+    async def refresh_leaderboard(callback: CallbackQuery):
+        """Обработчик обновления таблицы лидеров"""
+        try:
+            # Удаляем старое сообщение
+            await callback.message.delete()
+
+            # Получаем всех пользователей
+            sorted_users_data = await db.get_all_users()
+
+            if not sorted_users_data:
+                await callback.message.answer(get_no_users_text())
+                return
+
+            # Преобразуем данные в формат для функции get_leaderboard_text
+            sorted_users = []
+            for user_data in sorted_users_data:
+                user_data = ensure_user_income(user_data)
+                sorted_users.append((str(user_data['user_id']), user_data))
+
+            user_id = callback.from_user.id
+            user_id_str = str(user_id)
+            user_position = 0
+            current_user_data = None
+
+            # Находим позицию текущего пользователя
+            for i, (uid, user_data) in enumerate(sorted_users, 1):
+                if uid == user_id_str:
+                    user_position = i
+                    current_user_data = user_data
+                    break
+
+            # Если пользователя нет в списке, получаем его данные
+            if not current_user_data:
+                username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
+                current_user_data = await db.get_or_create_user(user_id, username)
+                current_user_data = ensure_user_income(current_user_data)
+
+                # Ищем позицию среди всех пользователей
+                for i, (_, user_data) in enumerate(sorted_users, 1):
+                    if user_data['money'] < current_user_data['money']:
+                        user_position = i
+                        break
+                else:
+                    user_position = len(sorted_users) + 1
+
+            await callback.message.answer(
+                get_leaderboard_text(sorted_users, user_position, current_user_data),
+                reply_markup=get_leaderboard_keyboard()
+            )
+
+            await callback.answer()
+        except Exception as e:
+            await callback.message.answer(f"❌ Ошибка при обновлении таблицы лидеров: {str(e)}")
+            await callback.answer()
+
+
+    @router.message(Command("top_money"))
+    @router.message(F.text == "💰 Топ по деньгам")
+    async def show_money_top(message: Message):
+        """Показывает топ по деньгам"""
+        await Leaderboard.show_leaderboard_command(message, rating_type="money")
+
+    @router.message(Command("top_coins"))
+    @router.message(F.text == "🪙 Топ по монетам")
+    async def show_coins_top(message: Message):
+        """Показывает топ по купленным монетам"""
+        await Leaderboard.show_leaderboard_command(message, rating_type="coins")
+
+
+# ========== АДМИН ПАНЕЛЬ ==========
 class Admin:
     # ========== АДМИН ПАНЕЛЬ ==========
 
@@ -1004,6 +1079,7 @@ class Admin:
             reply_markup=builder.as_markup()
         )
 
+
 # ========== ОБРАБОТКА ВСЕХ ОСТАЛЬНЫХ СООБЩЕНИЙ ==========
 @router.message()
 async def handle_all_messages(message: Message):
@@ -1052,6 +1128,7 @@ async def handle_all_messages(message: Message):
     if message.text not in processed_commands:
         if not message.text.startswith('/'):
             await message.answer(get_default_message_text())
+            await message.answer(message.from_user.first_name)
 
 
 
