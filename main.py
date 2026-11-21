@@ -56,5 +56,6 @@ async def main():
         print("👋 Соединения закрыты")
 
 
+
 if __name__ == "__main__":
     asyncio.run(main())
