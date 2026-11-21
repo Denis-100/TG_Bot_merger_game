@@ -86,25 +86,39 @@ def get_exchange_success_text(exchanges: list, old_income: str, new_income: str,
 
 def get_no_exchange_text(user_coins: dict) -> str:
     from utils.exchange_logic import get_exchange_rules
+    from utils.formatters import get_coin_display_name
+    
     rules = get_exchange_rules()
     needed_info = "\n💡 Для обмена нужно:\n"
-
-    for source_coin, rule in rules.items():
-        if rule['target'] is not None:
-            source_count = user_coins.get(source_coin, 0)
-            if source_count < rule['rate']:
-                needed = rule['rate'] - source_count
-                if needed > 0:
-                    from utils.formatters import get_coin_display_name
-                    source_name = get_coin_display_name(source_coin)
-                    target_name = rule['name']
-                    needed_info += f"• {source_name}: {source_count}/{rule['rate']} (нужно ещё {needed})\n"
-
-    return (
-        f"❌ Нет доступных обменов!\n"
-        f"💡 Нужно минимум 3 монеты одного типа для объединения.\n"
-        f"{needed_info}"
-    )
+    
+    # Используем правильный порядок из COIN_TYPES
+    from utils.coin_config import COIN_TYPES
+    
+    # Проходим по всем монетам в правильном порядке
+    for coin_type in COIN_TYPES:
+        # Проверяем есть ли правило для этой монеты
+        if coin_type in rules:
+            rule = rules[coin_type]
+            
+            # Если есть следующая монета
+            if rule['target'] is not None:
+                source_count = user_coins.get(coin_type, 0)
+                rate = rule.get('rate', 3)  # 3 по умолчанию из EXCHANGE_RATES
+                
+                if source_count < rate:
+                    needed = rate - source_count
+                    if needed > 0:
+                        source_name = get_coin_display_name(coin_type)
+                        target_name = rule['name']
+                        needed_info += f"• {source_name}: {source_count}/{rate} (нужно ещё {needed})\n"
+        
+        # Если это последняя монета (lava_coin) и она есть у пользователя
+        if coin_type == 'lava_coin':
+            lava_count = user_coins.get('lava_coin', 0)
+            if lava_count > 0:
+                needed_info += f"\n🔥 У вас {lava_count} лава-коинов! Это максимальный уровень! 🎉\n"
+    
+    return needed_info
 
 
 # Сообщения таблицы лидеров
