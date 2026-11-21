@@ -61,6 +61,7 @@ def get_buy_menu_text(balance: str, bronze_bought: int, next_price: str, income:
 # Сообщения об обмене
 def get_exchange_success_text(exchanges: list, old_income: str, new_income: str, income_change: str,
                               total_source: int, total_target: int, exchange_count: int) -> str:
+    from utils.parse_num import parse_formatted_number
     text = "✅ Автоматический обмен выполнен!\n\n📊 Результаты обмена:\n"
 
     for exchange in exchanges:
@@ -70,10 +71,13 @@ def get_exchange_success_text(exchanges: list, old_income: str, new_income: str,
     text += f"• Было: {old_income} в секунду\n"
     text += f"• Стало: {new_income} в секунду\n"
 
-    if float(income_change.replace('K', '000').replace('M', '000000').replace('B', '000000000')) > 0:
+    income_change_value = parse_formatted_number(income_change)
+
+    if income_change_value > 0:
         text += f"• Увеличение: +{income_change} в секунду\n"
-    elif float(income_change.replace('K', '000').replace('M', '000000').replace('B', '000000000')) < 0:
-        text += f"• Уменьшение: {income_change} в секунду\n"
+    elif income_change_value < 0:
+        clean_change = income_change.replace('-', '').strip()
+        text += f"• Уменьшение: {clean_change} в секунду\n"
     else:
         text += f"• Доход не изменился\n"
 
