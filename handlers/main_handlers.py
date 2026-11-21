@@ -14,6 +14,7 @@ from utils.calculations import (
     calculate_bronze_coin_price, calculate_coin_income,
     calculate_online_income, get_price_breakdown, get_next_prices_preview
 )
+from utils.cooldown import check_cooldown
 from utils.formatters import format_price, get_coin_display_name
 from utils.coin_config import get_all_coin_types, get_coin_display_name as get_coin_name
 from utils.exchange_logic import auto_exchange_all
@@ -185,6 +186,10 @@ class BuyCoin:
     async def buy_bronze_coins(callback: CallbackQuery):
         """Обработчик покупки медных монет"""
         user_id = callback.from_user.id
+
+        if not check_cooldown(user_id, seconds=2):
+            await callback.answer("⏳ Подождите 2 секунды перед следующей покупкой", show_alert=True)
+            return
 
         try:
             # Парсим количество монет
