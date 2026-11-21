@@ -94,7 +94,112 @@ def get_buy_coins_keyboard(user_data: dict) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_leaderboard_keyboard() -> InlineKeyboardMarkup:
+def get_leaderboard_text(sorted_users, user_position, current_user_data,
+                         rating_type="money", title="💰 Топ по деньгам") -> str:
+    """Генерирует текст таблицы лидеров для разных типов рейтинга"""
+
+    text = f"{title}\n"
+    text += f"👥 Всего игроков: {len(sorted_users)}\n\n"
+
+    # Определяем ключ для отображения значения
+    if rating_type == "coins":
+        value_key = "bronze_coin_bought"
+        value_suffix = " 🪙"
+    else:  # money
+        value_key = "money"
+        value_suffix = " 💰"
+
+    # Топ-10 игроков
+    text += "🏆 ТОП-10 ИГРОКОВ:\n"
+
+    for i, (user_id_str, user_data) in enumerate(sorted_users[:10], 1):
+        username = user_data.get('username', f"Игрок {user_id_str}")
+        first_name = user_data.get('first_name', '')
+        display_name = username if username else first_name
+
+        if rating_type == "coins":
+            value = user_data.get('bronze_coin_bought', 0)
+            display_value = f"{value:,}{value_suffix}"
+        else:  # money
+            value = user_data.get('money', 0)
+            display_value = format_price(value)
+
+        # Медали для первых трех мест
+        medal = ""
+        if i == 1:
+            medal = "🥇 "
+        elif i == 2:
+            medal = "🥈 "
+        elif i == 3:
+            medal = "🥉 "
+
+        # Обрезаем слишком длинные имена
+        if len(display_name) > 15:
+            display_name = display_name[:12] + "..."
+
+        text += f"{medal}{i}. {display_name} - {display_value}\n"
+
+    # Позиция текущего пользователя
+    text += f"\n📊 ВАША ПОЗИЦИЯ: #{user_position}\n"
+
+    if rating_type == "coins":
+        user_value = current_user_data.get('bronze_coin_bought', 0)
+        text += f"🪙 Куплено медных монет: {user_value:,}\n"
+
+        # Прогресс до следующей позиции
+        if user_position > 1 and len(sorted_users) > 1:
+            above_user = sorted_users[user_position - 2][1]  # Пользователь выше
+            above_value = above_user.get('bronze_coin_bought', 0)
+            needed = above_value - user_value + 1
+            text += f"📈 До #{user_position - 1} нужно: {needed:,} монет\n"
+
+        # Прогресс до следующей позиции
+        if user_position > 1 and len(sorted_users) > 1:
+            above_user = sorted_users[user_position - 2][1]
+            above_total = sum(above_user.get('coins', {}).values())
+            needed = above_total - user_total_coins + 1
+            text += f"📈 До #{user_position - 1} нужно: {needed:,} монет\n"
+
+    else:  # money
+        user_money = current_user_data.get('money', 0)
+        text += f"💰 Ваш баланс: {format_price(user_money)}\n"
+
+        # Прогресс до следующей позиции
+        if user_position > 1 and len(sorted_users) > 1:
+            above_user = sorted_users[user_position - 2][1]
+            above_money = above_user.get('money', 0)
+            needed = above_money - user_money + 1
+            text += f"📈 До #{user_position - 1} нужно: {format_price(needed)}\n"
+
+    # Статистика (если есть данные)
+    if sorted_users:
+        if rating_type == "coins":
+            top_value = sorted_users[0][1].get('bronze_coin_bought', 0)
+            text += f"\n🥇 Лидер: {top_value:,} монет"
+        else:  # money
+            top_money = sorted_users[0][1].get('money', 0)
+            text += f"\n🥇 Лидер: {format_price(top_money)}"
+
+    text += "\n\nДанные обновляются при каждом открытии"
+
+    return text
+
+
+def get_leaderboard_keyboard(rating_type="money") -> InlineKeyboardMarkup:
+    """Создает клавиатуру для таблицы лидеров"""
     builder = InlineKeyboardBuilder()
+
+    # Кнопки переключения между рейтингами
+    buttons = []
+
+    money_text = "💰 Деньги" if rating_type != "money" else "✅ Деньги"
+    coins_text = "🪙 Монеты" if rating_type != "coins" else "✅ Монеты"
+
+    buttons.append(InlineKeyboardButton(text=money_text, callback_data="leaderboard_money"))
+    buttons.append(InlineKeyboardButton(text=coins_text, callback_data="leaderboard_coins"))
+
+    builder.row(*buttons)
     builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_leaderboard"))
+    builder.row(InlineKeyboardButton(text="↩️ Назад в меню", callback_data="leaderboard_back"))
+
     return builder.as_markup()

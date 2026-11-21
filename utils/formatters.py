@@ -26,20 +26,21 @@ def get_coin_display_name(coin_type: str) -> str:
     """Возвращает читаемое имя для типа монеты"""
     names = {
         'bronze_coin': "🟤 Медная монета",
-        'bronze_bar': "🟤 Медный слиток",
+        'bronze_bar': "🟫 Медный слиток",
         'iron_coin': "⚙️ Железная монета",
         'iron_bar': "⚙️ Железный слиток",
         'silver_coin': "⚪ Серебряная монета",
-        'silver_bar': "⚪ Серебряный слиток",
-        'bronze_coin_high': "🟫 Бронзовая монета",
-        'bronze_bar_high': "🟫 Бронзовый слиток",
+        'silver_bar': "⬜️ Серебряный слиток",
+        'bronze_coin_high': "🟠 Бронзовая монета",
+        'bronze_bar_high': "🟧 Бронзовый слиток",
         'gold_coin': "🟡 Золотая монета",
-        'gold_bar': "🟡 Золотой слиток",
+        'gold_bar': "🟨 Золотой слиток",
         'emerald': "💚 Изумруд",
         'sapphire': "💙 Сапфир",
         'ruby': "❤️ Рубин",
         'platinum_coin': "⚜️ Платиновая монета",
         'platinum_bar': "⚜️ Платиновый слиток",
-        'diamond': "💎 Алмаз"
+        'diamond': "💎 Алмаз",
+        'lava_coin': "🔥 Лава коин"
     }
     return names.get(coin_type, coin_type)

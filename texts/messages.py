@@ -85,40 +85,88 @@ def get_exchange_success_text(exchanges: list, old_income: str, new_income: str,
 
 
 def get_no_exchange_text(user_coins: dict) -> str:
-    from utils.exchange_logic import get_exchange_rules
-    from utils.formatters import get_coin_display_name
-    
-    rules = get_exchange_rules()
-    needed_info = "\n💡 Для обмена нужно:\n"
-    
-    # Используем правильный порядок из COIN_TYPES
-    from utils.coin_config import COIN_TYPES
-    
-    # Проходим по всем монетам в правильном порядке
-    for coin_type in COIN_TYPES:
-        # Проверяем есть ли правило для этой монеты
-        if coin_type in rules:
-            rule = rules[coin_type]
-            
-            # Если есть следующая монета
-            if rule['target'] is not None:
-                source_count = user_coins.get(coin_type, 0)
-                rate = rule.get('rate', 3)  # 3 по умолчанию из EXCHANGE_RATES
-                
-                if source_count < rate:
-                    needed = rate - source_count
-                    if needed > 0:
-                        source_name = get_coin_display_name(coin_type)
-                        target_name = rule['name']
-                        needed_info += f"• {source_name}: {source_count}/{rate} (нужно ещё {needed})\n"
-        
-        # Если это последняя монета (lava_coin) и она есть у пользователя
-        if coin_type == 'lava_coin':
-            lava_count = user_coins.get('lava_coin', 0)
-            if lava_count > 0:
-                needed_info += f"\n🔥 У вас {lava_count} лава-коинов! Это максимальный уровень! 🎉\n"
-    
-    return needed_info
+    """
+    Универсальная функция для отображения статуса всех монет.
+    Автоматически определяет иерархию, сортирует в правильном порядке и нумерует.
+    """
+    try:
+        from utils.exchange_logic import get_exchange_rules
+        from utils.formatters import get_coin_display_name
+        from utils.coin_config import COIN_TYPES  # Импортируем порядок из конфига
+
+        rules = get_exchange_rules()
+
+        # Определяем порядок монет: сначала из COIN_TYPES, затем остальные
+        ordered_coins = []
+
+        # 1. Добавляем монеты в порядке из COIN_TYPES
+        for coin_type in COIN_TYPES:
+            if coin_type in rules or coin_type in user_coins:
+                ordered_coins.append(coin_type)
+
+        # 2. Добавляем остальные монеты (например, lava_coin)
+        all_coins = set(user_coins.keys()) | set(rules.keys())
+        for coin_type in sorted(all_coins):
+            if coin_type not in ordered_coins:
+                ordered_coins.append(coin_type)
+
+        # Автоматически определяем максимальные монеты (у которых нет target)
+        max_coins_types = [coin for coin, rule in rules.items()
+                           if rule.get('target') is None]
+
+        # Группируем монеты
+        result_lines = []
+        max_coin_number = None
+
+        for idx, coin_type in enumerate(ordered_coins, 1):
+            count = user_coins.get(coin_type, 0)
+
+            # Получаем красивое имя
+            try:
+                display_name = get_coin_display_name(coin_type)
+            except:
+                display_name = ' '.join(word.capitalize()
+                                        for word in coin_type.split('_'))
+
+            # Определяем статус монеты
+            if coin_type in max_coins_types:
+                # Максимальная монета - запоминаем номер
+                max_coin_number = idx
+                if count > 0:
+                    result_lines.append(f"{idx}. {display_name}: {count} 🏆 МАКСИМУМ")
+                else:
+                    result_lines.append(f"{idx}. {display_name}: {count} 🔥 Финальная цель")
+            elif coin_type in rules:
+                # Монета с обменом
+                rule = rules[coin_type]
+                rate = rule.get('rate', 3)
+                if count <= rate:
+                    needed = rate - count
+                    result_lines.append(f"{idx}. {display_name}: {count}/{rate}")
+            else:
+                # Простая монета без правил
+                if count > 0:
+                    result_lines.append(f"{idx}. {display_name}: {count}")
+                else:
+                    result_lines.append(f"{idx}. {display_name}: {count}")
+
+        # Формируем итоговый текст
+        output = "\n📊 Статус ваших монет:\n" + "\n".join(result_lines)
+
+        # Добавляем общую статистику
+        total_max = sum(user_coins.get(coin, 0) for coin in max_coins_types)
+        if total_max > 0:
+            output += f"\n\n🎉 Вы достигли максимума с {total_max} монет(ами) на уровне {max_coin_number}!"
+
+        return output
+
+    except ImportError as e:
+        # Fallback если модули не найдены
+        result_lines = []
+        for idx, (coin, count) in enumerate(sorted(user_coins.items()), 1):
+            result_lines.append(f"{idx}. {coin}: {count}")
+
+        return f"\n📊 Ваши монеты:\n" + "\n".join(result_lines)
 
 
 # Сообщения таблицы лидеров
@@ -175,7 +223,7 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0, user_data: 
                 asset_short = f"{parts[0]} {parts[-1]}"
             else:
                 asset_short = top_asset_name
-            text += f"💎 Актив: {asset_short} ×{top_asset_count}\n"
+            text += f"💎 Лучший актив: {asset_short} ×{top_asset_count}\n"
 
         if user_position > 1:
             user_above = sorted_users[user_position - 2]

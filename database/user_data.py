@@ -22,7 +22,7 @@ def get_user_top_asset(user_data: dict) -> tuple:
         'gold_coin': 9,  # 🟡 Золотая монета
         'bronze_bar_high': 8,  # 🟫 Бронзовый слиток (высший сорт)
         'bronze_coin_high': 7,  # 🟫 Бронзовая монета (высший сорт)
-        'silver_bar': 6,  # ⚪ Серебряный слиток
+        'silver_bar': 6,  # ⬜️ Серебряный слиток
         'silver_coin': 5,  # ⚪ Серебряная монета
         'iron_bar': 4,  # ⚙️ Железный слиток
         'iron_coin': 3,  # ⚙️ Железная монета
