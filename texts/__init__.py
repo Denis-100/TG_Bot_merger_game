@@ -13,7 +13,6 @@ __all__ = [
     'get_no_exchange_text',
     'get_leaderboard_text',
     'get_no_users_text',
-    'get_price_details_text',
     'get_back_to_menu_text',
     'get_default_message_text',
     'get_help_main_text',

@@ -266,27 +266,6 @@ def get_no_users_text() -> str:
     return "📭 В базе данных пока нет пользователей."
 
 
-# Общие сообщения
-def get_price_details_text(preview: list, bronze_bought: int) -> str:
-    from utils.formatters import format_price
-
-    text = "💰 Цены следующих медных монет:\n\n"
-
-    for coin_number, price in preview:
-        price_text = "БЕСПЛАТНО" if price == 0 else format_price(price)
-        if coin_number == bronze_bought + 1:
-            text += f"{coin_number}. {price_text} (следующая)\n"
-        else:
-            text += f"{coin_number}. {price_text}\n"
-
-    text += f"\n📊 Статистика:\n"
-    text += f"• Уже куплено: {bronze_bought} монет\n"
-    text += f"• Цена следующей: {format_price(preview[0][1])}\n"
-    text += f"• Цена 10-й сл. монеты: {format_price(preview[9][1])}\n"
-
-    return text
-
-
 def get_back_to_menu_text() -> str:
     return "Меню"
 

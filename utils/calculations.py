@@ -44,20 +44,6 @@ def get_price_breakdown(user: dict, quantity: int) -> list:
     return prices
 
 
-def get_next_prices_preview(user: dict, count: int = 10) -> list:
-    """Возвращает цены следующих count монет"""
-    bronze_bought = user.get('bronze_coin_bought', 0)
-    preview = []
-
-    for i in range(count):
-        price = 0
-        if bronze_bought + i > 0:
-            price = 10 + (bronze_bought + i - 1) * 15
-        preview.append((bronze_bought + i + 1, price))
-
-    return preview
-
-
 def should_show_advanced_buttons(user: dict) -> bool:
     """Определяет, нужно ли показывать продвинутые кнопки покупки"""
     return user.get('money', 0) >= 100_000_000  # 100 миллионов

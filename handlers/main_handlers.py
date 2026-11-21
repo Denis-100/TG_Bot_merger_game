@@ -13,7 +13,7 @@ from texts.help_texts import *
 from texts.profile_texts import get_profile_text
 from utils.calculations import (
     calculate_bronze_coin_price, calculate_coin_income,
-    calculate_online_income, get_price_breakdown, get_next_prices_preview
+    calculate_online_income, get_price_breakdown
 )
 from utils.cooldown import check_cooldown
 from utils.formatters import format_price, get_coin_display_name
@@ -353,20 +353,6 @@ class BuyCoin:
 
     # ▲▲▲ КОНЕЦ ДОБАВЛЕНИЯ ▲▲▲
 
-    @staticmethod
-    @router.callback_query(F.data == "price_details")
-    async def show_price_details(callback: CallbackQuery):
-        """Обработчик показа деталей цен"""
-        user_id = callback.from_user.id
-        username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-
-        # Получаем пользователя
-        user = await db.get_or_create_user(user_id, username)
-
-        preview = get_next_prices_preview(user, 10)
-
-        await callback.message.answer(get_price_details_text(preview, user['bronze_coin_bought']))
-        await callback.answer()
 
     @staticmethod
     @router.callback_query(F.data == "back_to_menu")

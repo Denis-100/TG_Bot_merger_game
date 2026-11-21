@@ -99,7 +99,6 @@ def get_buy_coins_keyboard(user_data: dict, message_id: int = None) -> InlineKey
     builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data=refresh_data))
 
     # Дополнительные кнопки
-    builder.row(InlineKeyboardButton(text="📊 Цены следующих монет", callback_data="price_details"))
     builder.row(InlineKeyboardButton(text="↩️ Назад в меню", callback_data="back_to_menu"))
 
     return builder.as_markup()

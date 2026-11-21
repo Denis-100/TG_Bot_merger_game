@@ -3,8 +3,7 @@ from .calculations import (
     calculate_coin_income,
     calculate_online_income,
     calculate_bronze_coin_price,
-    get_price_breakdown,
-    get_next_prices_preview
+    get_price_breakdown
 )
 from .formatters import (
     format_price,
@@ -29,7 +28,6 @@ __all__ = [
     'calculate_online_income',
     'calculate_bronze_coin_price',
     'get_price_breakdown',
-    'get_next_prices_preview',
     'format_price',
     'format_income',
     'get_coin_display_name',
