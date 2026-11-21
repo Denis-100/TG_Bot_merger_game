@@ -2,7 +2,7 @@
 import os
 import sys
 
-ADMINS = [1029698029]
+ADMINS = [1029698029, 1981321232]
 
 def get_env_var(name, default=None):
     """Безопасное получение переменной окружения"""
