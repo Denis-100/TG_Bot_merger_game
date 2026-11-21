@@ -124,7 +124,7 @@ async def main():
 
     # 2. Загружаем переменные
     from dotenv import load_dotenv
-    load_dotenv('.env.local', override=True)
+    load_dotenv('.env', override=True)
     print("✅ Переменные окружения загружены")
 
     # 3. Проверяем токен
