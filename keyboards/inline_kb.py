@@ -15,7 +15,14 @@ def get_first_coin_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_buy_coins_keyboard(user_data: dict) -> InlineKeyboardMarkup:
+def get_buy_coins_keyboard(user_data: dict, message_id: int = None) -> InlineKeyboardMarkup:
+    """
+    Создает клавиатуру для покупки монет
+
+    :param user_data: Данные пользователя
+    :param message_id: ID сообщения для обновления (опционально)
+    :return: InlineKeyboardMarkup
+    """
     builder = InlineKeyboardBuilder()
 
     bronze_bought = user_data.get('bronze_coin_bought', 0)
@@ -87,6 +94,10 @@ def get_buy_coins_keyboard(user_data: dict) -> InlineKeyboardMarkup:
             else:
                 builder.row(row_buttons[i])
 
+    # Кнопка "Обновить" с передачей message_id для удаления
+    refresh_data = f"refresh_buy_menu:{message_id}" if message_id else "refresh_buy_menu"
+    builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data=refresh_data))
+
     # Дополнительные кнопки
     builder.row(InlineKeyboardButton(text="📊 Цены следующих монет", callback_data="price_details"))
     builder.row(InlineKeyboardButton(text="↩️ Назад в меню", callback_data="back_to_menu"))
@@ -104,7 +115,7 @@ def get_leaderboard_text(sorted_users, user_position, current_user_data,
     # Определяем ключ для отображения значения
     if rating_type == "coins":
         value_key = "bronze_coin_bought"
-        value_suffix = " 🪙"
+        value_suffix = " 🟤"
     else:  # money
         value_key = "money"
         value_suffix = " 💰"
@@ -144,7 +155,7 @@ def get_leaderboard_text(sorted_users, user_position, current_user_data,
 
     if rating_type == "coins":
         user_value = current_user_data.get('bronze_coin_bought', 0)
-        text += f"🪙 Куплено медных монет: {user_value:,}\n"
+        text += f"🟤 Куплено медных монет: {user_value:,}\n"
 
         # Прогресс до следующей позиции
         if user_position > 1 and len(sorted_users) > 1:
@@ -193,13 +204,12 @@ def get_leaderboard_keyboard(rating_type="money") -> InlineKeyboardMarkup:
     buttons = []
 
     money_text = "💰 Деньги" if rating_type != "money" else "✅ Деньги"
-    coins_text = "🪙 Монеты" if rating_type != "coins" else "✅ Монеты"
+    coins_text = "🟤 Монеты" if rating_type != "coins" else "✅ Монеты"
 
     buttons.append(InlineKeyboardButton(text=money_text, callback_data="leaderboard_money"))
     buttons.append(InlineKeyboardButton(text=coins_text, callback_data="leaderboard_coins"))
 
     builder.row(*buttons)
-    builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="refresh_leaderboard"))
     builder.row(InlineKeyboardButton(text="↩️ Назад в меню", callback_data="leaderboard_back"))
 
     return builder.as_markup()

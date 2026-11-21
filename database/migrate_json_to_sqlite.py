@@ -161,7 +161,7 @@ async def migrate_data():
             print(f"\n📈 Статистика SQLite:")
             print(f"   👥 Всего пользователей: {total_users}")
             print(f"   💰 Общий баланс: {total_money:,.0f}")
-            print(f"   🪙 Всего монет: {total_coins}")
+            print(f"   🟤 Всего монет: {total_coins}")
 
     except Exception as e:
         print(f"❌ Ошибка при миграции: {e}")

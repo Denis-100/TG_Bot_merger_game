@@ -175,11 +175,12 @@ def get_no_exchange_text(user_coins: dict) -> str:
 
 
 # Сообщения таблицы лидеров
-def get_leaderboard_text(sorted_users: list, user_position: int = 0, user_data: dict = None) -> str:
+def get_leaderboard_text(sorted_users: list, user_position: int = 0,
+                         user_data: dict = None, text: str = "✨ ТОП-10 ИГРОКОВ ✨\n",
+                         sort_by: str = "money") -> str:
     from utils.formatters import format_price, get_coin_display_name
 
-    text = "✨ ТОП-10 ИГРОКОВ ✨\n"
-    text += "•" * 35 + "\n\n"
+    text += "•" * 42 + "\n\n"
 
     for i, (user_id_str, user_data_item) in enumerate(sorted_users[:10], 1):
         first_name = user_data_item.get('first_name', '')
@@ -198,8 +199,14 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0, user_data: 
         place_emoji = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"][i - 1]
 
         text += f"{place_emoji} {first_name}\n"
-        text += f"   Баланс: {format_price(money)}\n"
-        text += f"   Куплено медных: {bronze_bought}\n"
+        if sort_by == "money":
+            # Если сортируем по деньгам - показываем баланс первым
+            text += f"   Баланс: {format_price(money)}\n"
+            text += f"   Куплено медных: {bronze_bought}\n"
+        else:
+            # Если сортируем по монетам - показываем монеты первым
+            text += f"   Куплено медных: {bronze_bought}\n"
+            text += f"   Баланс: {format_price(money)}\n"
 
         if top_asset_count > 0:
             if " " in top_asset_name:
@@ -218,8 +225,13 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0, user_data: 
 
     if user_position > 0 and user_data:
         text += f"🎯 ВАША ПОЗИЦИЯ: {user_position}\n"
-        text += f"💰 Баланс: {format_price(user_data.get('money', 0))}\n"
-        text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0)}\n"
+
+        if sort_by == "money":
+            text += f"💰 Баланс: {format_price(user_data.get('money', 0))}\n"
+            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0)}\n"
+        else:
+            text += f"🟤 Медных: {user_data.get('bronze_coin_bought', 0)}\n"
+            text += f"💰 Баланс: {format_price(user_data.get('money', 0))}\n"
 
         top_asset_name, top_asset_count = get_user_top_asset(user_data)
         if top_asset_count > 0:
@@ -232,11 +244,19 @@ def get_leaderboard_text(sorted_users: list, user_position: int = 0, user_data: 
 
         if user_position > 1:
             user_above = sorted_users[user_position - 2]
-            money_above = user_above[1].get('money', 0)
-            need_more = money_above - user_data.get('money', 0) + 1
 
-            if need_more > 0:
-                text += f"\n📈 До {user_position - 1} места: +{format_price(need_more)}"
+            if sort_by == "money":
+                # Разница в деньгах
+                money_above = user_above[1].get('money', 0)
+                need_more = money_above - user_data.get('money', 0) + 1
+                if need_more > 0:
+                    text += f"\n📈 До {user_position - 1} места: +{format_price(need_more)} денег"
+            else:
+                # Разница в монетах
+                bronze_above = user_above[1].get('bronze_coin_bought', 0)
+                need_more_bronze = bronze_above - user_data.get('bronze_coin_bought', 0) + 1
+                if need_more_bronze > 0:
+                    text += f"\n📈 До {user_position - 1} места: +{need_more_bronze} медных монет"
 
     text += f"\n📊 Всего игроков: {len(sorted_users)}"
     return text

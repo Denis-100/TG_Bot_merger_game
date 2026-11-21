@@ -1,5 +1,6 @@
 # handlers/main_handlers.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -43,13 +44,15 @@ class Start:
 
         # Проверяем, есть ли у пользователя первая монета
         if user['coins'].get('bronze_coin', 0) == 0 and user['bronze_coin_bought'] == 0:
+            await message.answer(get_bot_info_text())
+            await message.answer(get_commands_text())
             await message.answer(
                 get_welcome_text(username),
                 reply_markup=get_first_coin_keyboard()
             )
         else:
-            await message.answer("Меню", reply_markup=get_main_keyboard())
             await message.answer(f"С возвращением, {username}!")
+            await message.answer("Меню", reply_markup=get_main_keyboard())
 
 
     @router.callback_query(F.data == "first_free_coin")
@@ -98,6 +101,7 @@ class MenuButton:
         await message.answer(get_profile_text(user, str(next_price), coins_list))
 
 
+    @router.message(Command("help"))
     @router.message(F.text == "❓ Помощь")
     async def help_command(message: Message):
         """Обработчик кнопки ❓ Помощь - показывает меню помощи"""
@@ -138,6 +142,43 @@ class MenuButton:
 class BuyCoin:
     last_shop_messages = {}
     last_purchase_messages = {}
+
+    # ▼▼▼ ДОБАВИЛ: Функция обновления меню покупки ▼▼▼
+    @staticmethod
+    async def refresh_buy_menu(callback: CallbackQuery):
+        """Обновляет меню покупки монет"""
+        user_id = callback.from_user.id
+
+        # Получаем актуальные данные пользователя
+        username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
+        user = await db.get_or_create_user(user_id, username)
+        user = ensure_user_income(user)
+
+        # Обновляем текст меню
+        next_price = calculate_bronze_coin_price(user, 1)
+        menu_text = get_buy_menu_text(
+            format_price(user['money']),
+            user['bronze_coin_bought'],
+            format_price(next_price),
+            format_price(user['online_income'])
+        )
+
+        # Создаем новую клавиатуру с ID текущего сообщения для удаления
+        keyboard = get_buy_coins_keyboard(user, callback.message.message_id)
+        try:
+            # Редактируем текущее сообщение
+            await callback.message.edit_text(
+                text=menu_text,
+                reply_markup=keyboard
+            )
+            await callback.answer("✅ Меню обновлено!")
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                await callback.answer("✅ Данные уже актуальны!")
+            else:
+                raise e
+
+    # ▲▲▲ КОНЕЦ ДОБАВЛЕНИЯ ▲▲▲
 
     @staticmethod
     @router.message(F.text == "🛒 Купить медные монеты")
@@ -254,7 +295,8 @@ class BuyCoin:
                                 format_price(calculate_bronze_coin_price(updated_user, 1)),
                                 format_price(updated_user['online_income'])
                             ),
-                            reply_markup=get_buy_coins_keyboard(updated_user)  # ← ОБНОВЛЕННАЯ КЛАВИАТУРА
+                            # ▼▼▼ ИЗМЕНИЛ: Добавил ID сообщения для кнопки "Обновить" ▼▼▼
+                            reply_markup=get_buy_coins_keyboard(updated_user, BuyCoin.last_shop_messages[user_id])
                         )
                     except Exception as e:
                         # Если не удалось обновить (сообщение удалено и т.д.)
@@ -289,6 +331,27 @@ class BuyCoin:
         except Exception as e:
             await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
+    # ▼▼▼ ДОБАВИЛ: Обработчик кнопки "Обновить" ▼▼▼
+    @staticmethod
+    @router.callback_query(lambda c: c.data.startswith("refresh_buy_menu"))
+    async def handle_refresh(callback: CallbackQuery):
+        """Обработчик кнопки обновления меню покупки"""
+        # Удаляем предыдущее сообщение о покупке (если есть)
+        user_id = callback.from_user.id
+        if user_id in BuyCoin.last_purchase_messages:
+            try:
+                await callback.bot.delete_message(
+                    chat_id=user_id,
+                    message_id=BuyCoin.last_purchase_messages[user_id]
+                )
+            except:
+                pass
+            del BuyCoin.last_purchase_messages[user_id]
+
+        # Обновляем меню покупки
+        await BuyCoin.refresh_buy_menu(callback)
+
+    # ▲▲▲ КОНЕЦ ДОБАВЛЕНИЯ ▲▲▲
 
     @staticmethod
     @router.callback_query(F.data == "price_details")
@@ -304,7 +367,6 @@ class BuyCoin:
 
         await callback.message.answer(get_price_details_text(preview, user['bronze_coin_bought']))
         await callback.answer()
-
 
     @staticmethod
     @router.callback_query(F.data == "back_to_menu")
@@ -395,7 +457,7 @@ class Leaderboard:
                     key=lambda x: x.get('bronze_coin_bought', 0),
                     reverse=True
                 )
-                rating_title = "🏅 Топ по купленным монетам"
+                rating_title = "✨🏅 ТОП-10 ПО МОНЕТАМ ✨\n"
             else:
                 # По умолчанию сортируем по деньгам
                 sorted_users_data = sorted(
@@ -403,7 +465,7 @@ class Leaderboard:
                     key=lambda x: x.get('money', 0),
                     reverse=True
                 )
-                rating_title = "💰 Топ по деньгам"
+                rating_title = "✨💰 ТОП-10 ПО ДЕНЬГАМ ✨\n"
 
             # Преобразуем данные
             sorted_users = []
@@ -447,7 +509,9 @@ class Leaderboard:
                 get_leaderboard_text(
                     sorted_users,
                     user_position,
-                    current_user_data
+                    current_user_data,
+                    text=rating_title,
+                    sort_by=rating_type
                 ),
                 reply_markup=get_leaderboard_keyboard(rating_type)
             )
@@ -479,76 +543,6 @@ class Leaderboard:
             await callback.answer()
         except Exception as e:
             await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-    @router.callback_query(F.data == "refresh_leaderboard")
-    async def refresh_leaderboard(callback: CallbackQuery):
-        """Обработчик обновления таблицы лидеров"""
-        try:
-            # Удаляем старое сообщение
-            await callback.message.delete()
-
-            # Получаем всех пользователей
-            sorted_users_data = await db.get_all_users()
-
-            if not sorted_users_data:
-                await callback.message.answer(get_no_users_text())
-                return
-
-            # Преобразуем данные в формат для функции get_leaderboard_text
-            sorted_users = []
-            for user_data in sorted_users_data:
-                user_data = ensure_user_income(user_data)
-                sorted_users.append((str(user_data['user_id']), user_data))
-
-            user_id = callback.from_user.id
-            user_id_str = str(user_id)
-            user_position = 0
-            current_user_data = None
-
-            # Находим позицию текущего пользователя
-            for i, (uid, user_data) in enumerate(sorted_users, 1):
-                if uid == user_id_str:
-                    user_position = i
-                    current_user_data = user_data
-                    break
-
-            # Если пользователя нет в списке, получаем его данные
-            if not current_user_data:
-                username = callback.from_user.username or callback.from_user.first_name or "Пользователь"
-                current_user_data = await db.get_or_create_user(user_id, username)
-                current_user_data = ensure_user_income(current_user_data)
-
-                # Ищем позицию среди всех пользователей
-                for i, (_, user_data) in enumerate(sorted_users, 1):
-                    if user_data['money'] < current_user_data['money']:
-                        user_position = i
-                        break
-                else:
-                    user_position = len(sorted_users) + 1
-
-            await callback.message.answer(
-                get_leaderboard_text(sorted_users, user_position, current_user_data),
-                reply_markup=get_leaderboard_keyboard()
-            )
-
-            await callback.answer()
-        except Exception as e:
-            await callback.message.answer(f"❌ Ошибка при обновлении таблицы лидеров: {str(e)}")
-            await callback.answer()
-
-
-    @router.message(Command("top_money"))
-    @router.message(F.text == "💰 Топ по деньгам")
-    async def show_money_top(message: Message):
-        """Показывает топ по деньгам"""
-        await Leaderboard.show_leaderboard_command(message, rating_type="money")
-
-    @router.message(Command("top_coins"))
-    @router.message(F.text == "🪙 Топ по монетам")
-    async def show_coins_top(message: Message):
-        """Показывает топ по купленным монетам"""
-        await Leaderboard.show_leaderboard_command(message, rating_type="coins")
 
 
 # ========== АДМИН ПАНЕЛЬ ==========
@@ -624,11 +618,29 @@ class Admin:
             start_idx = (page - 1) * per_page
             end_idx = start_idx + per_page
 
+            # ✅ ИСПРАВЛЕНО: Функция для определения лучшей монеты по иерархии
+            def get_best_coin(coins: dict) -> tuple:
+                """Возвращает (название, количество) лучшей монеты по иерархии"""
+                if not coins:
+                    return "Нет", 0
+
+                # Используем иерархию из COIN_TYPES (последняя в списке - самая ценная)
+                from utils.coin_config import COIN_TYPES, COIN_DISPLAY_NAMES
+
+                # Идем от самой ценной к наименее ценной
+                for coin_type in reversed(COIN_TYPES):
+                    count = coins.get(coin_type, 0)
+                    if count > 0:
+                        coin_name = COIN_DISPLAY_NAMES.get(coin_type, coin_type)
+                        return coin_name, count
+
+                return "Нет", 0
+
             # Формируем текст
             text = f"📊 СТРАНИЦА {page}/{total_pages}\n"
             text += f"👥 Всего игроков: {total_players}\n"
             text += f"💰 Общая сумма: {format_price(total_money)}\n"
-            text += f"🪙 Всего медных: {total_bronze:,}\n\n"
+            text += f"🟤 Всего медных: {total_bronze:,}\n\n"
             text += "ИГРОКИ:\n"
 
             for i, user in enumerate(sorted_users[start_idx:end_idx], start_idx + 1):
@@ -646,20 +658,9 @@ class Admin:
                 else:
                     display_name = f"ID:{user_id}"
 
-                # Лучший актив
+                # Лучший актив (используем исправленную функцию)
                 coins = user.get('coins', {})
-                best_coin = "Нет"
-                best_count = 0
-
-                if coins:
-                    for coin_type, count in coins.items():
-                        if count > best_count:
-                            best_count = count
-                            try:
-                                from utils.coin_config import COIN_DISPLAY_NAMES
-                                best_coin = COIN_DISPLAY_NAMES.get(coin_type, coin_type)
-                            except:
-                                best_coin = coin_type
+                best_coin, best_count = get_best_coin(coins)
 
                 text += f"\n{i}. {display_name}\n"
                 text += f"   ID: {user_id}\n"
@@ -1133,7 +1134,6 @@ async def handle_all_messages(message: Message):
     if message.text not in processed_commands:
         if not message.text.startswith('/'):
             await message.answer(get_default_message_text())
-            await message.answer(message.from_user.first_name)
 
 
 

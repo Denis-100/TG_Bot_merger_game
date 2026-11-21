@@ -95,7 +95,7 @@ async def migrate_if_needed():
 
         print(f"\n✅ Миграция завершена успешно!")
         print(f"   👥 Пользователей перенесено: {migrated_users}")
-        print(f"   🪙 Записей монет: {migrated_coins}")
+        print(f"   🟤 Записей монет: {migrated_coins}")
         print(f"   📊 Всего в PostgreSQL: {total_users} пользователей")
         print(f"   💰 Общий баланс: {total_money:,.0f}")
 
