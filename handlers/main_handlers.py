@@ -438,7 +438,7 @@ class Leaderboard:
     @router.message(Command("игроки"))
     @router.message(Command("players"))
     @router.message(F.text == "🏆 Таблица игроков")
-    async def show_leaderboard_command(message: Message, rating_type: str = "money", user_id: int = None):
+    async def show_leaderboard_command(message: Message, rating_type: str = "coins", user_id: int = None):
         """Обработчик показа таблицы лидеров"""
         try:
             # Получаем всех пользователей
