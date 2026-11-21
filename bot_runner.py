@@ -70,10 +70,10 @@ async def run_bot_forever():
             logger.info(f"🔄 Запуск бота (попытка {restart_count}/{max_restarts})")
             
             # Импортируем основной модуль
-            import main
+            import start_bot
             
             # Запускаем основную функцию
-            await main.main()
+            await start_bot.main()
             
         except KeyboardInterrupt:
             logger.info("Бот остановлен пользователем")
@@ -103,10 +103,10 @@ async def simple_bot_test():
     
     try:
         # Пробуем импортировать и запустить main.py
-        import main
+        import start_bot
         
         # Создаем таск
-        task = asyncio.create_task(main.main())
+        task = asyncio.create_task(start_bot.main())
         
         # Ждем немного
         await asyncio.sleep(5)
