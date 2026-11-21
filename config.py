@@ -1,70 +1,49 @@
+# config.py
 import os
 import sys
-from dotenv import load_dotenv
 
-
-def clean_env_value(value: str) -> str:
-    """Убирает кавычки из значения переменной окружения"""
+def get_env_var(name, default=None):
+    """Безопасное получение переменной окружения"""
+    value = os.getenv(name)
     if not value:
-        return value
-
-    # Убираем кавычки в начале и конце
+        return default
+    
     value = value.strip()
     if (value.startswith('"') and value.endswith('"')) or \
-            (value.startswith("'") and value.endswith("'")):
+       (value.startswith("'") and value.endswith("'")):
         value = value[1:-1]
-
+    
     return value
 
-
-# Определяем окружение
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-
-print(f"⚙️  Загрузка конфигурации. Окружение: {ENVIRONMENT}")
-
-# Загружаем соответствующий файл
-if ENVIRONMENT == "development":
-    if os.path.exists('.env.local'):
-        load_dotenv('.env.local', override=True)
-        print("✅ Загружен .env.local для разработки")
-    elif os.path.exists('.env'):
-        load_dotenv('.env', override=True)
-        print("⚠️  .env.local не найден, загружен .env")
-    else:
-        print("⚠️  Файлы .env не найдены")
-else:
-    if os.path.exists('.env'):
-        load_dotenv('.env', override=True)
-        print("✅ Загружен .env для продакшена")
-    else:
-        print("⚠️  .env не найден")
-
-# Теперь получаем значения
-BOT_TOKEN = clean_env_value(os.getenv("BOT_TOKEN"))
-DATABASE_URL = clean_env_value(os.getenv("DATABASE_URL"))
-
+# Основные переменные
+BOT_TOKEN = get_env_var("BOT_TOKEN")
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден!")
-    print("   Установите токен в .env или .env.local")
+    print("   Установите в Railway: Settings → Variables")
     sys.exit(1)
 
-if not DATABASE_URL:
-    print("⚠️  DATABASE_URL не найден, использую SQLite по умолчанию")
-    DATABASE_URL = 'sqlite:///users.db'
+DATABASE_URL = get_env_var("DATABASE_URL", "sqlite:///users.db")
+ENVIRONMENT = get_env_var("ENVIRONMENT", "development")
 
-# Определяем тип базы данных по URL
+# Определяем тип БД
 if DATABASE_URL and DATABASE_URL.startswith('postgresql://'):
     DB_TYPE = 'postgresql'
+    SQLITE_PATH = None
 elif DATABASE_URL and DATABASE_URL.startswith('sqlite:///'):
     DB_TYPE = 'sqlite'
-    # Извлекаем путь к файлу SQLite
     SQLITE_PATH = DATABASE_URL.replace('sqlite:///', '')
 else:
-    DB_TYPE = 'sqlite'  # По умолчанию для разработки
+    DB_TYPE = 'sqlite'
     SQLITE_PATH = 'users.db'
-    DATABASE_URL = f'sqlite:///{SQLITE_PATH}'
 
-print(f"🔧 Окружение: {ENVIRONMENT}")
-print(f"🗄️ Тип БД: {DB_TYPE}")
-print(f"🤖 Токен: {BOT_TOKEN[:10]}...")
-print(f"🔗 DATABASE_URL: {DATABASE_URL[:40]}...")
+print(f"⚙️ Конфигурация:")
+print(f"  Окружение: {ENVIRONMENT}")
+print(f"  Тип БД: {DB_TYPE}")
+print(f"  Токен: {BOT_TOKEN[:10]}...")
+if DB_TYPE == 'postgresql':
+    print(f"  PostgreSQL URL: {DATABASE_URL[:50]}...")
+else:
+    print(f"  SQLite файл: {SQLITE_PATH}")
+
+# Экспортируем ВСЕ переменные
+__all__ = ['BOT_TOKEN', 'DATABASE_URL', 'ENVIRONMENT', 'DB_TYPE', 'SQLITE_PATH']
